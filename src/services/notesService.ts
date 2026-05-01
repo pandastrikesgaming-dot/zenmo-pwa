@@ -149,10 +149,24 @@ function getBrowserUploadFile(file?: File | Blob) {
   return file;
 }
 
+function isGenericMimeType(value?: string | null) {
+  return !value || value === 'application/octet-stream' || value === 'binary/octet-stream';
+}
+
+function getUploadFileName(file: UploadDraftFile | PageImage, fallbackName: string) {
+  return file.name || fallbackName;
+}
+
 function getUploadMimeType(file: UploadDraftFile | PageImage) {
   const browserFile = getBrowserUploadFile(file.file);
+  const mimeType = file.mimeType || browserFile?.type || 'application/octet-stream';
+  const fileName = getUploadFileName(file, '');
 
-  return file.mimeType || browserFile?.type || 'application/octet-stream';
+  if (fileName.toLowerCase().endsWith('.pdf') && isGenericMimeType(mimeType)) {
+    return 'application/pdf';
+  }
+
+  return mimeType;
 }
 
 function getUploadFileSize(file: UploadDraftFile | PageImage) {
@@ -161,16 +175,12 @@ function getUploadFileSize(file: UploadDraftFile | PageImage) {
   return file.sizeBytes ?? browserFile?.size ?? null;
 }
 
-function getUploadFileName(file: UploadDraftFile | PageImage, fallbackName: string) {
-  return file.name || fallbackName;
-}
-
 function isImageMimeType(mimeType: string) {
   return mimeType.startsWith('image/');
 }
 
-function isPdfMimeType(mimeType: string) {
-  return mimeType === 'application/pdf';
+function isPdfMimeType(mimeType: string, fileName: string) {
+  return mimeType === 'application/pdf' || (fileName.toLowerCase().endsWith('.pdf') && isGenericMimeType(mimeType));
 }
 
 function assertSupportedUploadFile(
@@ -194,7 +204,7 @@ function assertSupportedUploadFile(
     );
   }
 
-  if (expectedType === 'pdf' && !isPdfMimeType(mimeType)) {
+  if (expectedType === 'pdf' && !isPdfMimeType(mimeType, fileName)) {
     throw new Error('Unsupported file type. Please choose a PDF file.');
   }
 

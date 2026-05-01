@@ -13,6 +13,13 @@ import { fixedSubjects, getSubjectAccentColor } from '../constants/subjects';
 import { useAuth } from '../hooks';
 import { isValidSection } from '../lib/normalizeSectionId';
 import {
+  clearWebPdfDraft,
+  loadWebPdfDraft,
+  markWebUploadDraftPending,
+  saveWebPdfDraft,
+  updateWebPdfDraftMetadata,
+} from '../lib/webUploadDraft';
+import {
   markRequestFulfilled,
   triggerRequestFulfilledNotification,
   uploadMultiImageNote,
@@ -185,6 +192,24 @@ function validateWebSelectedFile(file: File) {
   if (!getWebFileKind(file)) {
     throw new Error('Unsupported file type. Please choose an image or PDF file.');
   }
+}
+
+async function assertWebPdfSignature(file: File) {
+  try {
+    const bytes = new Uint8Array(await file.slice(0, 1024).arrayBuffer());
+    const signature = [37, 80, 68, 70, 45];
+
+    for (let index = 0; index <= bytes.length - signature.length; index += 1) {
+      if (signature.every((value, offset) => bytes[index + offset] === value)) {
+        return;
+      }
+    }
+  } catch (error) {
+    console.warn('[UploadScreen] unable to inspect PDF signature', error);
+    throw new Error('Unable to read the selected PDF. Please choose the file again.');
+  }
+
+  throw new Error('This file does not look like a valid PDF. Please choose a PDF file.');
 }
 
 function openWebFileDialog({
@@ -628,11 +653,73 @@ export function UploadScreen() {
     }
   }, [requestContext]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function restoreWebPdfDraft() {
+      try {
+        const draft = await loadWebPdfDraft();
+
+        if (!isMounted || !draft) {
+          return;
+        }
+
+        console.log('[UploadScreen] restored web PDF draft', {
+          name: draft.fileName,
+          size: draft.sizeBytes,
+          type: draft.mimeType,
+        });
+        setPageImages([]);
+        setSelectedAction('pdf');
+        setSelectedFile(buildWebPdfDraftFile(draft.file));
+
+        if (draft.noteTitle?.trim()) {
+          setNoteTitle((current) => (current.trim() ? current : draft.noteTitle ?? ''));
+        }
+
+        if (draft.subjectId && subjects.some((subject) => subject.id === draft.subjectId)) {
+          setSelectedSubjectId(draft.subjectId);
+        }
+      } catch (error) {
+        console.warn('[UploadScreen] unable to restore web PDF draft', error);
+      }
+    }
+
+    void restoreWebPdfDraft();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || selectedFile?.source !== 'pdf') {
+      return;
+    }
+
+    void updateWebPdfDraftMetadata({
+      noteTitle,
+      subjectId: selectedSubjectId,
+    }).catch((error) => {
+      console.warn('[UploadScreen] unable to update web PDF draft metadata', error);
+    });
+  }, [noteTitle, selectedFile?.id, selectedFile?.source, selectedSubjectId]);
+
   function resetSelectedPages(nextAction: UploadActionType) {
     if (nextAction === 'pdf') {
       revokePageImages(pageImages);
       setPageImages([]);
       return;
+    }
+
+    if (Platform.OS === 'web' && selectedFile?.source === 'pdf') {
+      void clearWebPdfDraft().catch((error) => {
+        console.warn('[UploadScreen] unable to clear web PDF draft', error);
+      });
     }
 
     revokeDraftFile(selectedFile);
@@ -649,7 +736,7 @@ export function UploadScreen() {
     setPageImages((current) => [...current, ...nextPages]);
   }
 
-  function applyWebSelectedFiles(files: File[], actionType: UploadActionType) {
+  async function applyWebSelectedFiles(files: File[], actionType: UploadActionType) {
     if (files.length === 0) {
       return;
     }
@@ -670,11 +757,22 @@ export function UploadScreen() {
         throw new Error('Select either one PDF or one or more images, not both.');
       }
 
+      const pdfFile = normalizedFiles[0];
+
+      await assertWebPdfSignature(pdfFile);
+
+      if (Platform.OS === 'web') {
+        await saveWebPdfDraft(pdfFile, {
+          noteTitle,
+          subjectId: selectedSubjectId,
+        });
+      }
+
       revokePageImages(pageImages);
       revokeDraftFile(selectedFile);
       setPageImages([]);
       setSelectedAction('pdf');
-      setSelectedFile(buildWebPdfDraftFile(normalizedFiles[0]));
+      setSelectedFile(buildWebPdfDraftFile(pdfFile));
       return;
     }
 
@@ -716,7 +814,7 @@ export function UploadScreen() {
       try {
         const files = await captureWebCameraPhoto();
 
-        applyWebSelectedFiles(files, 'camera');
+        await applyWebSelectedFiles(files, 'camera');
       } catch (error) {
         console.warn('[UploadScreen] browser camera unavailable', error);
         Alert.alert('Camera unavailable', getCameraUnavailableMessage());
@@ -760,7 +858,7 @@ export function UploadScreen() {
         multiple: true,
       });
 
-      applyWebSelectedFiles(files, 'gallery');
+      await applyWebSelectedFiles(files, 'gallery');
       return;
     }
 
@@ -792,12 +890,13 @@ export function UploadScreen() {
 
   async function pickPdf() {
     if (Platform.OS === 'web') {
+      markWebUploadDraftPending('pdf-dialog-opened');
       const files = await openWebFileDialog({
         accept: WEB_PDF_ACCEPT,
         multiple: false,
       });
 
-      applyWebSelectedFiles(files, 'pdf');
+      await applyWebSelectedFiles(files, 'pdf');
       return;
     }
 
@@ -841,8 +940,13 @@ export function UploadScreen() {
     }
   }
 
-  function handleWebPdfInputChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.currentTarget.files ?? []);
+  function handleWebPdfInputClick() {
+    markWebUploadDraftPending('pdf-input-opened');
+  }
+
+  async function handleWebPdfInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const files = Array.from(input.files ?? []);
 
     console.log('[UploadScreen] web pdf input changed', {
       count: files.length,
@@ -851,18 +955,24 @@ export function UploadScreen() {
     });
 
     try {
-      applyWebSelectedFiles(files, 'pdf');
+      await applyWebSelectedFiles(files, 'pdf');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to pick a PDF right now.';
       Alert.alert('Selection failed', message);
     } finally {
-      event.currentTarget.value = '';
+      input.value = '';
     }
   }
 
   function handleClearFile() {
     if (isUploading) {
       return;
+    }
+
+    if (Platform.OS === 'web') {
+      void clearWebPdfDraft().catch((error) => {
+        console.warn('[UploadScreen] unable to clear web PDF draft', error);
+      });
     }
 
     revokeDraftFile(selectedFile);
@@ -910,6 +1020,12 @@ export function UploadScreen() {
   }
 
   function resetForm() {
+    if (Platform.OS === 'web') {
+      void clearWebPdfDraft().catch((error) => {
+        console.warn('[UploadScreen] unable to clear web PDF draft', error);
+      });
+    }
+
     revokeDraftFile(selectedFile);
     revokePageImages(pageImages);
     setSelectedAction(null);
@@ -1108,6 +1224,7 @@ export function UploadScreen() {
                         inputRef: webPdfInputRef,
                         multiple: false,
                         onChange: handleWebPdfInputChange,
+                        onClick: handleWebPdfInputClick,
                       }
                     : undefined
                 }

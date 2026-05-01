@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -18,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../hooks';
 import { flushPendingNavigationAction, navigationRef } from '../lib/navigationRef';
+import { hasRecentWebUploadDraftPending } from '../lib/webUploadDraft';
 import { fetchConversationPreviews } from '../services';
 import { colors } from '../theme';
 import type {
@@ -289,8 +291,12 @@ function getTabScreenOptions(routeName: keyof RootTabParamList): BottomTabNaviga
 }
 
 function MainTabs() {
+  const initialRouteName =
+    Platform.OS === 'web' && hasRecentWebUploadDraftPending() ? 'Upload' : undefined;
+
   return (
     <Tab.Navigator
+      initialRouteName={initialRouteName}
       screenOptions={({ route }) => getTabScreenOptions(route.name)}
       tabBar={(props) => <ZenmoTabBar {...props} />}
     >

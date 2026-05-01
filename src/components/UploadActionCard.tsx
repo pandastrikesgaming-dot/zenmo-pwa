@@ -10,6 +10,7 @@ type WebFileInputProps = {
   disabled?: boolean;
   inputRef?: RefObject<HTMLInputElement | null>;
   multiple?: boolean;
+  onClick?: () => void;
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
 };
 
@@ -69,6 +70,7 @@ export function UploadActionCard({
           disabled={webFileInputProps.disabled}
           multiple={webFileInputProps.multiple}
           onChange={webFileInputProps.onChange}
+          onClick={webFileInputProps.onClick}
           style={webFileInputStyle}
           type="file"
         />
@@ -89,6 +91,7 @@ const webFileInputStyle: CSSProperties = {
 
 const styles = StyleSheet.create({
   card: {
+    position: 'relative',
     borderWidth: 1,
     borderRadius: 16,
     backgroundColor: '#100B10',
