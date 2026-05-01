@@ -65,6 +65,7 @@ const actionConfig: Array<{
 ];
 
 const WEB_UPLOAD_ACCEPT = 'image/*,.pdf';
+const WEB_CAMERA_ACCEPT = 'image/*';
 const MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024;
 
 function formatFileSize(bytes?: number | null) {
@@ -203,6 +204,7 @@ function openWebFileDialog({
     document.body.appendChild(input);
 
     let settled = false;
+    let cleanupTimer: number | null = null;
     const settle = (files: File[]) => {
       if (settled) {
         return;
@@ -212,23 +214,45 @@ function openWebFileDialog({
       cleanup();
       resolve(files);
     };
-    const handleWindowFocus = () => {
-      window.setTimeout(() => {
-        if (!settled && (!input.files || input.files.length === 0)) {
-          settle([]);
-        }
-      }, 350);
-    };
     const cleanup = () => {
-      window.removeEventListener('focus', handleWindowFocus);
+      if (cleanupTimer) {
+        window.clearTimeout(cleanupTimer);
+      }
+
+      input.removeEventListener('cancel', handleCancel);
+      input.removeEventListener('change', handleChange);
       input.remove();
     };
+    const handleChange = () => {
+      const files = Array.from(input.files ?? []);
 
-    input.addEventListener('change', () => {
-      settle(Array.from(input.files ?? []));
+      console.log('[UploadScreen] web file input changed', {
+        count: files.length,
+        names: files.map((file) => file.name),
+      });
+
+      settle(files);
+    };
+    const handleCancel = () => {
+      console.log('[UploadScreen] web file input cancelled');
+      settle([]);
+    };
+
+    input.addEventListener('change', handleChange);
+    input.addEventListener('cancel', handleCancel);
+
+    cleanupTimer = window.setTimeout(() => {
+      if (!settled) {
+        cleanup();
+        resolve([]);
+      }
+    }, 5 * 60 * 1000);
+
+    console.log('[UploadScreen] opening web file input', {
+      accept,
+      capture: Boolean(capture),
+      multiple: Boolean(multiple),
     });
-    window.addEventListener('focus', handleWindowFocus);
-
     input.click();
   });
 }
@@ -459,7 +483,7 @@ export function UploadScreen() {
   async function pickFromCamera() {
     if (Platform.OS === 'web') {
       const files = await openWebFileDialog({
-        accept: WEB_UPLOAD_ACCEPT,
+        accept: WEB_CAMERA_ACCEPT,
         capture: true,
         multiple: false,
       });
