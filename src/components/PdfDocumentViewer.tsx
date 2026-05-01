@@ -43,6 +43,13 @@ type PdfLoadingTask = {
   promise: Promise<PdfDocumentProxy>;
 };
 
+type PdfJsModule = {
+  GlobalWorkerOptions: {
+    workerSrc: string;
+  };
+  getDocument: (options: Record<string, unknown>) => PdfLoadingTask;
+};
+
 const MAX_RENDER_SCALE = 4;
 const MIN_RENDER_SCALE = 0.2;
 
@@ -56,6 +63,67 @@ function clampRenderScale(value: number) {
   }
 
   return Math.min(Math.max(value, MIN_RENDER_SCALE), MAX_RENDER_SCALE);
+}
+
+function getPdfWorkerSrc() {
+  if (typeof window === 'undefined') {
+    return '/pdf.worker.min.mjs';
+  }
+
+  return new URL('/pdf.worker.min.mjs', window.location.origin).toString();
+}
+
+async function loadPdfDocument(pdfjs: PdfJsModule, fileUrl: string) {
+  const directTask = pdfjs.getDocument({
+    disableAutoFetch: true,
+    disableRange: true,
+    disableStream: true,
+    url: fileUrl,
+    withCredentials: false,
+  });
+
+  try {
+    return await directTask.promise;
+  } catch (directError) {
+    await directTask.destroy?.();
+
+    if (fileUrl.startsWith('blob:')) {
+      throw directError;
+    }
+
+    console.warn('[PdfDocumentViewer] url load failed; retrying with full PDF bytes', directError);
+    const response = await fetch(fileUrl, {
+      cache: 'no-store',
+      credentials: 'omit',
+      mode: 'cors',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Unable to fetch PDF bytes (${response.status}).`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    const byteTask = pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+      disableAutoFetch: true,
+      disableRange: true,
+      disableStream: true,
+    });
+
+    return byteTask.promise;
+  }
+}
+
+function getBrowserPreviewShellStyle(scale: number): CSSProperties {
+  const normalizedScale = clampRenderScale(scale);
+
+  return {
+    height: '100%',
+    minHeight: '100%',
+    transform: `scale(${normalizedScale})`,
+    transformOrigin: 'top center',
+    width: '100%',
+  };
 }
 
 function PdfCanvasPage({
@@ -210,6 +278,7 @@ export function PdfDocumentViewer({
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pdfDocument, setPdfDocument] = useState<PdfDocumentProxy | null>(null);
+  const [useBrowserPreview, setUseBrowserPreview] = useState(false);
 
   useEffect(() => {
     onErrorRef.current = onError;
@@ -253,13 +322,14 @@ export function PdfDocumentViewer({
         setIsLoading(true);
         setLoadError(null);
         setPdfDocument(null);
+        setUseBrowserPreview(false);
         onErrorRef.current?.('');
 
-        const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-        pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-        loadingTask = pdfjs.getDocument({
-          url: fileUrl,
-        }) as unknown as PdfLoadingTask;
+        const pdfjs = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfJsModule;
+        pdfjs.GlobalWorkerOptions.workerSrc = getPdfWorkerSrc();
+        loadingTask = {
+          promise: loadPdfDocument(pdfjs, fileUrl),
+        };
 
         const documentProxy = await loadingTask.promise;
 
@@ -286,10 +356,10 @@ export function PdfDocumentViewer({
         }
 
         console.error('[PdfDocumentViewer] load failed', error);
-        const message = 'Preview not available. Open PDF in new tab.';
-        setLoadError(message);
+        setLoadError(null);
+        setUseBrowserPreview(true);
         setIsLoading(false);
-        onErrorRef.current?.(message);
+        onErrorRef.current?.('');
       }
     }
 
@@ -347,6 +417,23 @@ export function PdfDocumentViewer({
           <ActivityIndicator color={accentColor} />
           <Text style={styles.stateText}>Loading PDF...</Text>
         </View>
+      ) : useBrowserPreview ? (
+        <div
+          ref={scrollRef}
+          onClick={onSingleTap}
+          onMouseMove={handleInteraction}
+          onScroll={handleInteraction}
+          onTouchStart={handleInteraction}
+          style={scrollStyle}
+        >
+          <div style={getBrowserPreviewShellStyle(scale)}>
+            <iframe
+              src={fileUrl}
+              style={browserPdfFrameStyle}
+              title="PDF preview"
+            />
+          </div>
+        </div>
       ) : loadError || !pdfDocument ? (
         <View style={styles.errorState}>
           <Text style={styles.stateTitle}>PDF unavailable</Text>
@@ -378,8 +465,10 @@ export function PdfDocumentViewer({
               onInteraction={handleInteraction}
               onPageVisible={handlePageVisible}
               onRenderError={(message) => {
-                setLoadError(message);
-                onError?.(message);
+                console.warn('[PdfDocumentViewer] canvas render unavailable; using browser PDF preview', message);
+                setLoadError(null);
+                setUseBrowserPreview(true);
+                onError?.('');
               }}
               pageNumber={pageNumber}
               pdfDocument={pdfDocument}
@@ -417,6 +506,15 @@ const canvasStyle: CSSProperties = {
   boxShadow: '0 18px 38px rgba(0, 0, 0, 0.34)',
   display: 'block',
   maxWidth: 'none',
+};
+
+const browserPdfFrameStyle: CSSProperties = {
+  backgroundColor: '#090706',
+  border: '0',
+  display: 'block',
+  height: '100%',
+  minHeight: '100%',
+  width: '100%',
 };
 
 const styles = StyleSheet.create({

@@ -105,9 +105,9 @@ function createBrowserFile(file: File | Blob, fallbackName: string, fallbackType
   const hasFileConstructor = typeof File !== 'undefined';
   const browserFile = hasFileConstructor && file instanceof File ? file : null;
   const name = browserFile?.name || fallbackName;
-  const type = file.type || fallbackType || '';
+  const type = isGenericWebMimeType(file.type) ? fallbackType || file.type || '' : file.type;
 
-  if (browserFile?.name && browserFile.type) {
+  if (browserFile?.name && browserFile.type === type && !isGenericWebMimeType(browserFile.type)) {
     return browserFile;
   }
 
@@ -117,12 +117,22 @@ function createBrowserFile(file: File | Blob, fallbackName: string, fallbackType
   });
 }
 
+function isGenericWebMimeType(value?: string | null) {
+  return !value || value === 'application/octet-stream' || value === 'binary/octet-stream';
+}
+
 function getWebFileKind(file: File): 'image' | 'pdf' | null {
   if (file.type.startsWith('image/')) {
     return 'image';
   }
 
   if (file.type === 'application/pdf') {
+    return 'pdf';
+  }
+
+  const normalizedName = file.name.toLowerCase();
+
+  if (isGenericWebMimeType(file.type) && normalizedName.endsWith('.pdf')) {
     return 'pdf';
   }
 
@@ -209,9 +219,7 @@ function openWebFileDialog({
     document.body.appendChild(input);
 
     let settled = false;
-    const openedAt = Date.now();
     let cleanupTimer: number | null = null;
-    let returnedEmptyTimer: number | null = null;
     const settle = (files: File[]) => {
       if (settled) {
         return;
@@ -226,41 +234,11 @@ function openWebFileDialog({
         window.clearTimeout(cleanupTimer);
       }
 
-      if (returnedEmptyTimer) {
-        window.clearTimeout(returnedEmptyTimer);
-      }
-
       input.removeEventListener('cancel', handleCancel);
       input.removeEventListener('change', handleChange);
-      window.removeEventListener('focus', handleWindowFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       cleanupActiveWebFileDialog = null;
       input.value = '';
       input.remove();
-    };
-    const settleEmptyAfterPickerReturn = () => {
-      if (settled || Date.now() - openedAt < 750) {
-        return;
-      }
-
-      if (returnedEmptyTimer) {
-        window.clearTimeout(returnedEmptyTimer);
-      }
-
-      returnedEmptyTimer = window.setTimeout(() => {
-        if (!settled && (!input.files || input.files.length === 0)) {
-          console.log('[UploadScreen] web file input returned without files');
-          settle([]);
-        }
-      }, 2000);
-    };
-    const handleWindowFocus = () => {
-      settleEmptyAfterPickerReturn();
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        settleEmptyAfterPickerReturn();
-      }
     };
     const handleChange = () => {
       const files = Array.from(input.files ?? []);
@@ -279,8 +257,6 @@ function openWebFileDialog({
 
     input.addEventListener('change', handleChange);
     input.addEventListener('cancel', handleCancel);
-    window.addEventListener('focus', handleWindowFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
     cleanupActiveWebFileDialog = cleanup;
 
     cleanupTimer = window.setTimeout(() => {
