@@ -416,6 +416,18 @@ export function ProfileScreen() {
       return;
     }
 
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const shouldDelete = window.confirm(
+        'Delete note?\n\nThis will remove the note from your archive. Continue?'
+      );
+
+      if (shouldDelete) {
+        void confirmDeleteNote();
+      }
+
+      return;
+    }
+
     Alert.alert('Delete note', 'This will remove the note from your archive. Continue?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -453,7 +465,11 @@ export function ProfileScreen() {
       setMyUploads((current) => current.filter((note) => note.id !== deletedNoteId));
       setSelectedNote(null);
       setIsNoteManagerVisible(false);
-      Alert.alert('Note deleted', 'Your note was removed successfully.');
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('Your note was removed successfully.');
+      } else {
+        Alert.alert('Note deleted', 'Your note was removed successfully.');
+      }
       await loadProfileScreenData();
     } catch (error) {
       const message =

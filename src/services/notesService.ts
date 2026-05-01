@@ -852,6 +852,11 @@ export async function deleteOwnedNote(input: DeleteOwnedNoteInput) {
     throw new Error('A valid note is required before deleting.');
   }
 
+  console.log('[notesService] delete note request', {
+    noteId: input.noteId,
+    userId: input.userId,
+  });
+
   const ownedNote = await fetchOwnedNoteMeta(input.noteId, input.userId);
   const pathsToRemove = new Set<string>();
 
@@ -884,7 +889,7 @@ export async function deleteOwnedNote(input: DeleteOwnedNoteInput) {
     .eq('note_id', input.noteId);
 
   if (deletePagesError) {
-    throw toAppError(deletePagesError, 'Unable to delete this note pages right now.');
+    logSupabaseError('Unable to delete note pages before parent delete; continuing', deletePagesError);
   }
 
   const { data, error } = await supabase
@@ -894,6 +899,12 @@ export async function deleteOwnedNote(input: DeleteOwnedNoteInput) {
     .eq('user_id', input.userId)
     .select('id')
     .maybeSingle();
+
+  console.log('[notesService] delete note parent response', {
+    noteId: input.noteId,
+    deleted: Boolean(data),
+    error: error ? ('message' in error ? error.message : String(error)) : null,
+  });
 
   if (error) {
     throw toAppError(error, 'Unable to delete this note right now.');
