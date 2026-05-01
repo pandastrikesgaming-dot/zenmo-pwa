@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Alert, ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
@@ -170,7 +170,7 @@ function getFallbackWebMimeType(fileName: string, actionType: UploadActionType) 
     return 'image/heic';
   }
 
-  return actionType === 'pdf' ? '' : 'image/jpeg';
+  return actionType === 'pdf' ? 'application/pdf' : 'image/jpeg';
 }
 
 function validateWebSelectedFile(file: File) {
@@ -569,6 +569,7 @@ export function UploadScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Upload'>>();
   const route = useRoute<RouteProp<RootTabParamList, 'Upload'>>();
   const { profile, user } = useAuth();
+  const webPdfInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedAction, setSelectedAction] = useState<UploadActionType | null>(null);
   const [selectedFile, setSelectedFile] = useState<UploadDraftFile | null>(null);
   const [pageImages, setPageImages] = useState<PageImage[]>([]);
@@ -840,6 +841,25 @@ export function UploadScreen() {
     }
   }
 
+  function handleWebPdfInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files ?? []);
+
+    console.log('[UploadScreen] web pdf input changed', {
+      count: files.length,
+      names: files.map((file) => file.name),
+      types: files.map((file) => file.type),
+    });
+
+    try {
+      applyWebSelectedFiles(files, 'pdf');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to pick a PDF right now.';
+      Alert.alert('Selection failed', message);
+    } finally {
+      event.currentTarget.value = '';
+    }
+  }
+
   function handleClearFile() {
     if (isUploading) {
       return;
@@ -1080,6 +1100,17 @@ export function UploadScreen() {
                 accentColor={action.accentColor}
                 active={selectedAction === action.type}
                 onPress={() => void handleActionPress(action.type)}
+                webFileInputProps={
+                  Platform.OS === 'web' && action.type === 'pdf'
+                    ? {
+                        accept: WEB_PDF_ACCEPT,
+                        disabled: isUploading,
+                        inputRef: webPdfInputRef,
+                        multiple: false,
+                        onChange: handleWebPdfInputChange,
+                      }
+                    : undefined
+                }
               />
             ))}
           </View>

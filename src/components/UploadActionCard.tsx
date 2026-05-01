@@ -1,7 +1,17 @@
+import type { ChangeEvent, RefObject } from 'react';
+import type { CSSProperties } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors, typography } from '../theme';
+
+type WebFileInputProps = {
+  accept: string;
+  disabled?: boolean;
+  inputRef?: RefObject<HTMLInputElement | null>;
+  multiple?: boolean;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+};
 
 type UploadActionCardProps = {
   title: string;
@@ -10,6 +20,7 @@ type UploadActionCardProps = {
   accentColor: string;
   active?: boolean;
   onPress?: () => void;
+  webFileInputProps?: WebFileInputProps;
 };
 
 export function UploadActionCard({
@@ -19,10 +30,11 @@ export function UploadActionCard({
   accentColor,
   active = false,
   onPress,
+  webFileInputProps,
 }: UploadActionCardProps) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={webFileInputProps ? undefined : onPress}
       style={({ pressed }) => [
         styles.card,
         { borderColor: `${accentColor}77` },
@@ -48,9 +60,32 @@ export function UploadActionCard({
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.description}>{description}</Text>
       </View>
+
+      {webFileInputProps ? (
+        <input
+          ref={webFileInputProps.inputRef}
+          aria-label={title}
+          accept={webFileInputProps.accept}
+          disabled={webFileInputProps.disabled}
+          multiple={webFileInputProps.multiple}
+          onChange={webFileInputProps.onChange}
+          style={webFileInputStyle}
+          type="file"
+        />
+      ) : null}
     </Pressable>
   );
 }
+
+const webFileInputStyle: CSSProperties = {
+  cursor: 'pointer',
+  height: '100%',
+  inset: 0,
+  opacity: 0,
+  position: 'absolute',
+  width: '100%',
+  zIndex: 5,
+};
 
 const styles = StyleSheet.create({
   card: {
