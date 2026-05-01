@@ -68,6 +68,7 @@ const WEB_UPLOAD_ACCEPT = 'image/*,.pdf';
 const WEB_CAMERA_ACCEPT = 'image/*';
 const MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024;
 let cleanupActiveWebFileDialog: (() => void) | null = null;
+let cleanupActiveWebCamera: (() => void) | null = null;
 
 function formatFileSize(bytes?: number | null) {
   if (!bytes || bytes <= 0) {
@@ -297,6 +298,204 @@ function openWebFileDialog({
   });
 }
 
+function canUseWebCameraCapture() {
+  return (
+    Platform.OS === 'web' &&
+    typeof document !== 'undefined' &&
+    typeof window !== 'undefined' &&
+    window.isSecureContext &&
+    typeof navigator !== 'undefined' &&
+    Boolean(navigator.mediaDevices?.getUserMedia)
+  );
+}
+
+function makeCameraControlButton(label: string, variant: 'primary' | 'secondary') {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  Object.assign(button.style, {
+    border: variant === 'primary' ? '0' : '1px solid rgba(255, 132, 39, 0.48)',
+    borderRadius: '10px',
+    background: variant === 'primary'
+      ? 'linear-gradient(90deg, #8F2CFF, #FF8427)'
+      : 'rgba(14, 8, 15, 0.96)',
+    color: '#FFFFFF',
+    cursor: 'pointer',
+    fontFamily: 'Space Grotesk, Arial, sans-serif',
+    fontSize: '14px',
+    fontWeight: '700',
+    letterSpacing: '0.8px',
+    padding: '13px 16px',
+    textTransform: 'uppercase',
+  });
+
+  return button;
+}
+
+function captureWebCameraPhoto() {
+  return new Promise<File[]>((resolve, reject) => {
+    if (!canUseWebCameraCapture()) {
+      resolve([]);
+      return;
+    }
+
+    cleanupActiveWebCamera?.();
+    cleanupActiveWebFileDialog?.();
+
+    const overlay = document.createElement('div');
+    const title = document.createElement('div');
+    const videoWrap = document.createElement('div');
+    const video = document.createElement('video');
+    const controls = document.createElement('div');
+    const cancelButton = makeCameraControlButton('Cancel', 'secondary');
+    const captureButton = makeCameraControlButton('Capture', 'primary');
+    let stream: MediaStream | null = null;
+    let settled = false;
+
+    Object.assign(overlay.style, {
+      alignItems: 'stretch',
+      background: '#020106',
+      boxSizing: 'border-box',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '14px',
+      inset: '0',
+      padding: '18px',
+      position: 'fixed',
+      zIndex: '2147483647',
+    });
+    Object.assign(title.style, {
+      color: '#FFF6EF',
+      fontFamily: 'Space Grotesk, Arial, sans-serif',
+      fontSize: '15px',
+      fontWeight: '700',
+      letterSpacing: '0.8px',
+      textTransform: 'uppercase',
+    });
+    title.textContent = 'Take Photo';
+    Object.assign(videoWrap.style, {
+      alignItems: 'center',
+      background: '#0E080E',
+      border: '1px solid rgba(166, 92, 255, 0.48)',
+      borderRadius: '14px',
+      display: 'flex',
+      flex: '1',
+      justifyContent: 'center',
+      minHeight: '0',
+      overflow: 'hidden',
+    });
+    Object.assign(video.style, {
+      background: '#000000',
+      height: '100%',
+      objectFit: 'cover',
+      width: '100%',
+    });
+    Object.assign(controls.style, {
+      display: 'grid',
+      gap: '10px',
+      gridTemplateColumns: '1fr 1fr',
+    });
+
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+
+    const cleanup = () => {
+      stream?.getTracks().forEach((track) => track.stop());
+      cancelButton.removeEventListener('click', handleCancel);
+      captureButton.removeEventListener('click', handleCapture);
+      overlay.remove();
+      cleanupActiveWebCamera = null;
+    };
+
+    const settle = (files: File[]) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      resolve(files);
+    };
+
+    function handleCancel() {
+      settle([]);
+    }
+
+    function handleCapture() {
+      if (!video.videoWidth || !video.videoHeight) {
+        reject(new Error('Camera is not ready yet. Please try again.'));
+        cleanup();
+        return;
+      }
+
+      const maxDimension = 1600;
+      const scale = Math.min(1, maxDimension / Math.max(video.videoWidth, video.videoHeight));
+      const canvas = document.createElement('canvas');
+
+      canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+      canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+
+      const context = canvas.getContext('2d');
+
+      if (!context) {
+        reject(new Error('Unable to capture the camera frame.'));
+        cleanup();
+        return;
+      }
+
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('Unable to prepare the captured photo.'));
+            cleanup();
+            return;
+          }
+
+          const file = createBrowserFile(blob, `zenmo-camera-${Date.now()}.jpg`, 'image/jpeg');
+
+          console.log('[UploadScreen] browser camera captured file', {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+          });
+          settle([file]);
+        },
+        'image/jpeg',
+        0.84
+      );
+    }
+
+    cancelButton.addEventListener('click', handleCancel);
+    captureButton.addEventListener('click', handleCapture);
+    controls.append(cancelButton, captureButton);
+    videoWrap.append(video);
+    overlay.append(title, videoWrap, controls);
+    document.body.appendChild(overlay);
+    cleanupActiveWebCamera = cleanup;
+
+    navigator.mediaDevices
+      .getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: 'environment' },
+          height: { ideal: 720 },
+          width: { ideal: 1280 },
+        },
+      })
+      .then((nextStream) => {
+        stream = nextStream;
+        video.srcObject = nextStream;
+        return video.play();
+      })
+      .catch((error) => {
+        cleanup();
+        reject(error instanceof Error ? error : new Error('Unable to open the camera.'));
+      });
+  });
+}
+
 function buildImageDraftFile(
   page: PageImage,
   source: 'camera' | 'gallery'
@@ -522,14 +721,16 @@ export function UploadScreen() {
 
   async function pickFromCamera() {
     if (Platform.OS === 'web') {
-      let files = await openWebFileDialog({
-        accept: WEB_CAMERA_ACCEPT,
-        capture: true,
-        multiple: false,
-      });
+      let files: File[] = [];
+
+      try {
+        files = await captureWebCameraPhoto();
+      } catch (error) {
+        console.warn('[UploadScreen] browser camera unavailable', error);
+      }
 
       if (files.length === 0) {
-        console.log('[UploadScreen] camera capture returned no file, retrying with image picker fallback');
+        console.log('[UploadScreen] camera capture returned no file, opening image picker fallback');
         files = await openWebFileDialog({
           accept: WEB_CAMERA_ACCEPT,
           multiple: false,
