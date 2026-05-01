@@ -64,6 +64,9 @@ const actionConfig: Array<{
   },
 ];
 
+const WEB_UPLOAD_ACCEPT = 'image/*,.pdf';
+const MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024;
+
 function formatFileSize(bytes?: number | null) {
   if (!bytes || bytes <= 0) {
     return undefined;
@@ -92,6 +95,82 @@ function revokeDraftFile(file?: UploadDraftFile | null) {
 
 function revokePageImages(pages: PageImage[]) {
   pages.forEach((page) => revokeObjectUrl(page.uri));
+}
+
+function createBrowserFile(file: File | Blob, fallbackName: string, fallbackType?: string): File {
+  const hasFileConstructor = typeof File !== 'undefined';
+  const browserFile = hasFileConstructor && file instanceof File ? file : null;
+  const name = browserFile?.name || fallbackName;
+  const type = file.type || fallbackType || '';
+
+  if (browserFile?.name && browserFile.type) {
+    return browserFile;
+  }
+
+  return new File([file], name, {
+    type,
+    lastModified: Date.now(),
+  });
+}
+
+function getWebFileKind(file: File): 'image' | 'pdf' | null {
+  if (file.type.startsWith('image/')) {
+    return 'image';
+  }
+
+  if (file.type === 'application/pdf') {
+    return 'pdf';
+  }
+
+  return null;
+}
+
+function logWebSelectedFile(file: File) {
+  console.log('[UploadScreen] selected file', {
+    name: file.name,
+    size: file.size,
+    type: file.type,
+  });
+}
+
+function getFallbackWebMimeType(fileName: string, actionType: UploadActionType) {
+  const normalizedName = fileName.toLowerCase();
+
+  if (normalizedName.endsWith('.pdf')) {
+    return 'application/pdf';
+  }
+
+  if (normalizedName.endsWith('.png')) {
+    return 'image/png';
+  }
+
+  if (normalizedName.endsWith('.webp')) {
+    return 'image/webp';
+  }
+
+  if (normalizedName.endsWith('.gif')) {
+    return 'image/gif';
+  }
+
+  if (normalizedName.endsWith('.heic') || normalizedName.endsWith('.heif')) {
+    return 'image/heic';
+  }
+
+  return actionType === 'pdf' ? '' : 'image/jpeg';
+}
+
+function validateWebSelectedFile(file: File) {
+  logWebSelectedFile(file);
+
+  if (file.size > MAX_UPLOAD_FILE_BYTES) {
+    throw new Error(
+      `"${file.name}" is too large. Upload files up to ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}.`
+    );
+  }
+
+  if (!getWebFileKind(file)) {
+    throw new Error('Unsupported file type. Please choose an image or PDF file.');
+  }
 }
 
 function openWebFileDialog({
@@ -169,6 +248,7 @@ function buildImageDraftFile(
     uri: page.uri,
     previewUri: page.uri,
     mimeType,
+    file: page.file,
     sizeBytes: page.sizeBytes ?? undefined,
     sizeLabel: formatFileSize(page.sizeBytes),
   };
@@ -195,6 +275,7 @@ function buildWebPageImage(file: File, source: 'camera' | 'gallery'): PageImage 
     uri: URL.createObjectURL(file),
     name: file.name || `zenmo-${Date.now()}.jpg`,
     mimeType,
+    file,
     sizeBytes: file.size,
   };
 }
@@ -225,6 +306,7 @@ function buildWebPdfDraftFile(file: File): UploadDraftFile {
     source: 'pdf',
     uri: URL.createObjectURL(file),
     mimeType,
+    file,
     pageCount: 1,
     sizeBytes: file.size,
     sizeLabel: formatFileSize(file.size),
@@ -318,6 +400,47 @@ export function UploadScreen() {
     setPageImages((current) => [...current, ...nextPages]);
   }
 
+  function applyWebSelectedFiles(files: File[], actionType: UploadActionType) {
+    if (files.length === 0) {
+      return;
+    }
+
+    const normalizedFiles = files.map((file) => {
+      const fallbackName = file.name || `zenmo-${Date.now()}`;
+      const fallbackType = getFallbackWebMimeType(fallbackName, actionType);
+      const normalizedFile = createBrowserFile(file, fallbackName, fallbackType);
+
+      validateWebSelectedFile(normalizedFile);
+      return normalizedFile;
+    });
+    const fileKinds = normalizedFiles.map((file) => getWebFileKind(file));
+    const containsPdf = fileKinds.includes('pdf');
+
+    if (containsPdf) {
+      if (normalizedFiles.length > 1 || fileKinds.some((kind) => kind !== 'pdf')) {
+        throw new Error('Select either one PDF or one or more images, not both.');
+      }
+
+      revokePageImages(pageImages);
+      revokeDraftFile(selectedFile);
+      setPageImages([]);
+      setSelectedAction('pdf');
+      setSelectedFile(buildWebPdfDraftFile(normalizedFiles[0]));
+      return;
+    }
+
+    if (actionType === 'pdf') {
+      throw new Error('Please choose a PDF file.');
+    }
+
+    appendPageImages(
+      normalizedFiles.map((file) =>
+        buildWebPageImage(file, actionType === 'camera' ? 'camera' : 'gallery')
+      ),
+      actionType === 'camera' ? 'camera' : 'gallery'
+    );
+  }
+
   function askToAddAnotherPage() {
     return new Promise<boolean>((resolve) => {
       Alert.alert('Add another page?', 'Capture another page or finish this note set.', [
@@ -336,15 +459,12 @@ export function UploadScreen() {
   async function pickFromCamera() {
     if (Platform.OS === 'web') {
       const files = await openWebFileDialog({
-        accept: 'image/*',
+        accept: WEB_UPLOAD_ACCEPT,
         capture: true,
         multiple: false,
       });
 
-      appendPageImages(
-        files.map((file) => buildWebPageImage(file, 'camera')),
-        'camera'
-      );
+      applyWebSelectedFiles(files, 'camera');
       return;
     }
 
@@ -379,14 +499,11 @@ export function UploadScreen() {
   async function pickFromGallery() {
     if (Platform.OS === 'web') {
       const files = await openWebFileDialog({
-        accept: 'image/*',
+        accept: WEB_UPLOAD_ACCEPT,
         multiple: true,
       });
 
-      appendPageImages(
-        files.map((file) => buildWebPageImage(file, 'gallery')),
-        'gallery'
-      );
+      applyWebSelectedFiles(files, 'gallery');
       return;
     }
 
@@ -418,20 +535,12 @@ export function UploadScreen() {
 
   async function pickPdf() {
     if (Platform.OS === 'web') {
-      const [file] = await openWebFileDialog({
-        accept: 'application/pdf,.pdf',
+      const files = await openWebFileDialog({
+        accept: WEB_UPLOAD_ACCEPT,
         multiple: false,
       });
 
-      if (!file) {
-        return;
-      }
-
-      revokePageImages(pageImages);
-      revokeDraftFile(selectedFile);
-      setPageImages([]);
-      setSelectedAction('pdf');
-      setSelectedFile(buildWebPdfDraftFile(file));
+      applyWebSelectedFiles(files, 'pdf');
       return;
     }
 
@@ -654,6 +763,7 @@ export function UploadScreen() {
 
       resetForm();
       navigation.navigate('Home');
+      Alert.alert('Upload complete', 'Your note is now available in the feed.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to upload the note.';
       Alert.alert('Upload failed', message);

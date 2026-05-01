@@ -13,6 +13,7 @@ export type PageImage = {
   uri: string;
   name?: string;
   mimeType: string;
+  file?: File | Blob;
   sizeBytes?: number;
 };
 
@@ -25,6 +26,7 @@ export type UploadDraftFile = {
   source: UploadActionType;
   uri: string;
   mimeType: string;
+  file?: File | Blob;
   previewUri?: string;
   pageCount?: number;
   sizeLabel?: string;

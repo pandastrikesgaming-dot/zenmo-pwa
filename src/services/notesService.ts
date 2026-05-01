@@ -1,4 +1,5 @@
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { Platform } from 'react-native';
 import { getSubjectAccentColor } from '../constants/subjects';
 import { isValidSection, normalizeSectionId } from '../lib/normalizeSectionId';
 import { supabase } from '../lib/supabase';
@@ -87,6 +88,7 @@ type DeleteOwnedNoteInput = {
 
 const noteSelectFields =
   'id, title, subject, file_type, file_url, user_id, user_name, pages, school_id, class_id, section_id, uploaded_at';
+const MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024;
 
 function logSupabaseError(context: string, error: unknown) {
   if (!error || typeof error !== 'object') {
@@ -125,6 +127,108 @@ function toAppError(error: unknown, fallbackMessage: string) {
   }
 
   return new Error(fallbackMessage);
+}
+
+function formatUploadFileSize(bytes?: number | null) {
+  if (!bytes || bytes <= 0) {
+    return 'unknown';
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getBrowserUploadFile(file?: File | Blob) {
+  if (Platform.OS !== 'web' || typeof Blob === 'undefined' || !file || !(file instanceof Blob)) {
+    return null;
+  }
+
+  return file;
+}
+
+function getUploadMimeType(file: UploadDraftFile | PageImage) {
+  const browserFile = getBrowserUploadFile(file.file);
+
+  return file.mimeType || browserFile?.type || 'application/octet-stream';
+}
+
+function getUploadFileSize(file: UploadDraftFile | PageImage) {
+  const browserFile = getBrowserUploadFile(file.file);
+
+  return file.sizeBytes ?? browserFile?.size ?? null;
+}
+
+function getUploadFileName(file: UploadDraftFile | PageImage, fallbackName: string) {
+  return file.name || fallbackName;
+}
+
+function isImageMimeType(mimeType: string) {
+  return mimeType.startsWith('image/');
+}
+
+function isPdfMimeType(mimeType: string) {
+  return mimeType === 'application/pdf';
+}
+
+function assertSupportedUploadFile(
+  file: UploadDraftFile | PageImage,
+  expectedType: 'image' | 'pdf',
+  fallbackName: string
+) {
+  const fileName = getUploadFileName(file, fallbackName);
+  const mimeType = getUploadMimeType(file);
+  const sizeBytes = getUploadFileSize(file);
+
+  console.log('[notesService] upload file', {
+    name: fileName,
+    size: sizeBytes,
+    type: mimeType,
+  });
+
+  if (sizeBytes && sizeBytes > MAX_UPLOAD_FILE_BYTES) {
+    throw new Error(
+      `"${fileName}" is too large. Upload files up to ${formatUploadFileSize(MAX_UPLOAD_FILE_BYTES)}.`
+    );
+  }
+
+  if (expectedType === 'pdf' && !isPdfMimeType(mimeType)) {
+    throw new Error('Unsupported file type. Please choose a PDF file.');
+  }
+
+  if (expectedType === 'image' && !isImageMimeType(mimeType)) {
+    throw new Error('Unsupported file type. Please choose an image file.');
+  }
+}
+
+async function getStorageUploadBody(file: UploadDraftFile | PageImage) {
+  const browserFile = getBrowserUploadFile(file.file);
+
+  if (browserFile) {
+    return browserFile;
+  }
+
+  return readFileAsArrayBuffer(file.uri);
+}
+
+function logStorageUploadResponse(
+  context: string,
+  path: string,
+  data: unknown,
+  error: unknown
+) {
+  console.log('[notesService] upload response', {
+    context,
+    data,
+    error: error
+      ? {
+          message: error instanceof Error ? error.message : String(error),
+        }
+      : null,
+    path,
+  });
 }
 
 function formatUploadedDate(value: string | null) {
@@ -203,25 +307,24 @@ function replaceFileExtension(value: string, nextExtension: string) {
   return value.replace(/\.[^.]+$/, `.${nextExtension}`);
 }
 
-function buildStoragePath(file: UploadDraftFile, schoolId: string, classId: string) {
+function buildStoragePath(file: UploadDraftFile, userId: string) {
   const extension = getFileExtension(file);
   const baseName = sanitizeFileName(file.name.replace(/\.[^.]+$/, ''));
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
-  return `${schoolId}/${classId}/${timestamp}-${baseName}.${extension}`;
+  return `${userId}/${timestamp}-${baseName}.${extension}`;
 }
 
 function buildMultiImageStoragePath(
   page: PageImage,
-  schoolId: string,
-  classId: string,
+  userId: string,
   uploadBatchId: string,
   pageNumber: number
 ) {
   const extension = getImageExtension(page);
   const baseName = sanitizeFileName((page.name ?? `page-${pageNumber}`).replace(/\.[^.]+$/, ''));
 
-  return `${schoolId}/${classId}/multi-image/${uploadBatchId}/${pageNumber}-${baseName}.${extension}`;
+  return `${userId}/multi-image/${uploadBatchId}/${pageNumber}-${baseName}.${extension}`;
 }
 
 async function readFileAsArrayBuffer(uri: string) {
@@ -484,14 +587,22 @@ export async function uploadNote(input: UploadNoteInput) {
 
   const uploadStart = Date.now();
   const fileToUpload =
-    input.file.type === 'image' ? await compressUploadImage(input.file) : input.file;
-  const filePath = buildStoragePath(fileToUpload, input.schoolId, input.classId);
-  const fileBody = await readFileAsArrayBuffer(fileToUpload.uri);
+    input.file.type === 'image' && Platform.OS !== 'web'
+      ? await compressUploadImage(input.file)
+      : input.file;
+  const expectedType = fileToUpload.type === 'pdf' ? 'pdf' : 'image';
 
-  const { error: storageError } = await supabase.storage.from('notes').upload(filePath, fileBody, {
-    contentType: fileToUpload.mimeType,
+  assertSupportedUploadFile(fileToUpload, expectedType, fileToUpload.name);
+
+  const filePath = buildStoragePath(fileToUpload, input.userId);
+  const fileBody = await getStorageUploadBody(fileToUpload);
+  const contentType = getUploadMimeType(fileToUpload);
+
+  const { data: storageData, error: storageError } = await supabase.storage.from('notes').upload(filePath, fileBody, {
+    contentType,
     upsert: false,
   });
+  logStorageUploadResponse('single-file', filePath, storageData, storageError);
 
   if (storageError) {
     throw toAppError(storageError, 'Unable to upload this note file right now.');
@@ -549,34 +660,43 @@ export async function uploadMultiImageNote(input: UploadMultiImageNoteInput) {
   const totalStart = Date.now();
 
   try {
-    input.onProgress?.('compressing');
-    const compressionStart = Date.now();
-    const compressedPages = await Promise.all(
-      input.pages.map((page, index) => compressImagePage(page, index + 1))
-    );
-    const compressionDuration = Date.now() - compressionStart;
-    console.log(`[notesService] multi-image compression finished in ${compressionDuration}ms`);
+    let pagesToUpload = input.pages;
+
+    if (Platform.OS !== 'web') {
+      input.onProgress?.('compressing');
+      const compressionStart = Date.now();
+      pagesToUpload = await Promise.all(
+        input.pages.map((page, index) => compressImagePage(page, index + 1))
+      );
+      const compressionDuration = Date.now() - compressionStart;
+      console.log(`[notesService] multi-image compression finished in ${compressionDuration}ms`);
+    } else {
+      console.log('[notesService] web multi-image upload using browser file payloads');
+    }
 
     input.onProgress?.('uploading');
     const uploadStart = Date.now();
     const uploadResults = await Promise.all(
-      compressedPages.map(async (page, index) => {
+      pagesToUpload.map(async (page, index) => {
         const pageNumber = index + 1;
         const path = buildMultiImageStoragePath(
           page,
-          input.schoolId,
-          input.classId,
+          input.userId,
           uploadBatchId,
           pageNumber
         );
         const pageUploadStart = Date.now();
 
         try {
-          const body = await readFileAsArrayBuffer(page.uri);
-          const { error: storageError } = await supabase.storage.from('notes').upload(path, body, {
-            contentType: page.mimeType,
+          assertSupportedUploadFile(page, 'image', page.name ?? `Page ${pageNumber}`);
+
+          const body = await getStorageUploadBody(page);
+          const contentType = getUploadMimeType(page);
+          const { data: storageData, error: storageError } = await supabase.storage.from('notes').upload(path, body, {
+            contentType,
             upsert: false,
           });
+          logStorageUploadResponse(`multi-image-page-${pageNumber}`, path, storageData, storageError);
 
           if (storageError) {
             throw storageError;
