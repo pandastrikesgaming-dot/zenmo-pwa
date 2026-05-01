@@ -64,8 +64,9 @@ const actionConfig: Array<{
   },
 ];
 
-const WEB_UPLOAD_ACCEPT = 'image/*,.pdf';
 const WEB_CAMERA_ACCEPT = 'image/*';
+const WEB_GALLERY_ACCEPT = 'image/*';
+const WEB_PDF_ACCEPT = 'application/pdf,.pdf';
 const MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024;
 let cleanupActiveWebFileDialog: (() => void) | null = null;
 let cleanupActiveWebCamera: (() => void) | null = null;
@@ -307,6 +308,14 @@ function canUseWebCameraCapture() {
     typeof navigator !== 'undefined' &&
     Boolean(navigator.mediaDevices?.getUserMedia)
   );
+}
+
+function getCameraUnavailableMessage() {
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    return 'Camera needs HTTPS on mobile browsers. Open the Vercel app URL, then tap Take Photo again. On this local network URL, use Choose from Gallery instead.';
+  }
+
+  return 'Browser camera is unavailable on this device. Use Choose from Gallery to upload an existing photo.';
 }
 
 function makeCameraControlButton(label: string, variant: 'primary' | 'secondary') {
@@ -721,23 +730,21 @@ export function UploadScreen() {
 
   async function pickFromCamera() {
     if (Platform.OS === 'web') {
-      let files: File[] = [];
+      if (!canUseWebCameraCapture()) {
+        console.warn('[UploadScreen] browser camera unavailable before opening picker');
+        Alert.alert('Camera unavailable', getCameraUnavailableMessage());
+        return;
+      }
 
       try {
-        files = await captureWebCameraPhoto();
+        const files = await captureWebCameraPhoto();
+
+        applyWebSelectedFiles(files, 'camera');
       } catch (error) {
         console.warn('[UploadScreen] browser camera unavailable', error);
+        Alert.alert('Camera unavailable', getCameraUnavailableMessage());
       }
 
-      if (files.length === 0) {
-        console.log('[UploadScreen] camera capture returned no file, opening image picker fallback');
-        files = await openWebFileDialog({
-          accept: WEB_CAMERA_ACCEPT,
-          multiple: false,
-        });
-      }
-
-      applyWebSelectedFiles(files, 'camera');
       return;
     }
 
@@ -772,7 +779,7 @@ export function UploadScreen() {
   async function pickFromGallery() {
     if (Platform.OS === 'web') {
       const files = await openWebFileDialog({
-        accept: WEB_UPLOAD_ACCEPT,
+        accept: WEB_GALLERY_ACCEPT,
         multiple: true,
       });
 
@@ -809,7 +816,7 @@ export function UploadScreen() {
   async function pickPdf() {
     if (Platform.OS === 'web') {
       const files = await openWebFileDialog({
-        accept: WEB_UPLOAD_ACCEPT,
+        accept: WEB_PDF_ACCEPT,
         multiple: false,
       });
 
