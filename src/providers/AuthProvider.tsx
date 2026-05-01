@@ -1,4 +1,4 @@
-import { createContext, type PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, type PropsWithChildren, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
@@ -243,8 +243,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [sessionLoading, setSessionLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const profileRef = useRef<UserProfile | null>(null);
+  const sessionRef = useRef<Session | null>(null);
 
   function applySession(nextSession: Session | null) {
+    sessionRef.current = nextSession;
     setSession(nextSession);
     setUser(nextSession?.user ?? null);
   }
@@ -255,6 +258,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     try {
       const nextProfile = await getProfileById(userId);
+      profileRef.current = nextProfile;
       setProfile(nextProfile);
       logStartup('refreshProfileForUser:success', {
         hasProfile: Boolean(nextProfile),
@@ -273,6 +277,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     applySession(nextSession);
 
     if (!nextSession?.user?.id) {
+      profileRef.current = null;
       setProfile(null);
       logStartup('syncSessionAndProfile:no-session');
       return;
@@ -380,6 +385,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
       if (event === 'SIGNED_OUT') {
         applySession(null);
+        profileRef.current = null;
         setProfile(null);
         setInitializing(false);
         setSessionLoading(false);
@@ -387,6 +393,27 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
 
       if (event === 'SIGNED_IN') {
+        const currentSession = sessionRef.current;
+        const currentProfile = profileRef.current;
+        const nextUserId = nextSession?.user?.id ?? null;
+        const isResumeForCurrentUser =
+          Boolean(nextUserId) &&
+          currentSession?.user?.id === nextUserId &&
+          Boolean(currentProfile);
+
+        if (isResumeForCurrentUser) {
+          applySession(nextSession);
+          setInitializing(false);
+          setSessionLoading(false);
+
+          void refreshProfileForUser(nextUserId).catch((error) => {
+            logStartup('refreshProfileForUser:resume-error', {
+              message: error instanceof Error ? error.message : 'Unknown profile refresh error',
+            });
+          });
+          return;
+        }
+
         setInitializing(true);
 
         void syncSessionAndProfile(nextSession)
@@ -509,6 +536,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     try {
       const nextProfile = await upsertProfile(user.id, input);
+      profileRef.current = nextProfile;
       setProfile(nextProfile);
       return nextProfile;
     } finally {

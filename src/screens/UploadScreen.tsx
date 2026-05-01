@@ -761,18 +761,21 @@ export function UploadScreen() {
 
       await assertWebPdfSignature(pdfFile);
 
-      if (Platform.OS === 'web') {
-        await saveWebPdfDraft(pdfFile, {
-          noteTitle,
-          subjectId: selectedSubjectId,
-        });
-      }
-
       revokePageImages(pageImages);
       revokeDraftFile(selectedFile);
       setPageImages([]);
       setSelectedAction('pdf');
       setSelectedFile(buildWebPdfDraftFile(pdfFile));
+
+      if (Platform.OS === 'web') {
+        void saveWebPdfDraft(pdfFile, {
+          noteTitle,
+          subjectId: selectedSubjectId,
+        }).catch((error) => {
+          console.warn('[UploadScreen] unable to save web PDF draft', error);
+        });
+      }
+
       return;
     }
 
