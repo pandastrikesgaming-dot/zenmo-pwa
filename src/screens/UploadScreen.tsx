@@ -67,6 +67,7 @@ const actionConfig: Array<{
 const WEB_UPLOAD_ACCEPT = 'image/*,.pdf';
 const WEB_CAMERA_ACCEPT = 'image/*';
 const MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024;
+let cleanupActiveWebFileDialog: (() => void) | null = null;
 
 function formatFileSize(bytes?: number | null) {
   if (!bytes || bytes <= 0) {
@@ -189,6 +190,8 @@ function openWebFileDialog({
       return;
     }
 
+    cleanupActiveWebFileDialog?.();
+
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = accept;
@@ -204,7 +207,9 @@ function openWebFileDialog({
     document.body.appendChild(input);
 
     let settled = false;
+    const openedAt = Date.now();
     let cleanupTimer: number | null = null;
+    let returnedEmptyTimer: number | null = null;
     const settle = (files: File[]) => {
       if (settled) {
         return;
@@ -219,9 +224,41 @@ function openWebFileDialog({
         window.clearTimeout(cleanupTimer);
       }
 
+      if (returnedEmptyTimer) {
+        window.clearTimeout(returnedEmptyTimer);
+      }
+
       input.removeEventListener('cancel', handleCancel);
       input.removeEventListener('change', handleChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      cleanupActiveWebFileDialog = null;
+      input.value = '';
       input.remove();
+    };
+    const settleEmptyAfterPickerReturn = () => {
+      if (settled || Date.now() - openedAt < 750) {
+        return;
+      }
+
+      if (returnedEmptyTimer) {
+        window.clearTimeout(returnedEmptyTimer);
+      }
+
+      returnedEmptyTimer = window.setTimeout(() => {
+        if (!settled && (!input.files || input.files.length === 0)) {
+          console.log('[UploadScreen] web file input returned without files');
+          settle([]);
+        }
+      }, 2000);
+    };
+    const handleWindowFocus = () => {
+      settleEmptyAfterPickerReturn();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        settleEmptyAfterPickerReturn();
+      }
     };
     const handleChange = () => {
       const files = Array.from(input.files ?? []);
@@ -240,13 +277,16 @@ function openWebFileDialog({
 
     input.addEventListener('change', handleChange);
     input.addEventListener('cancel', handleCancel);
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    cleanupActiveWebFileDialog = cleanup;
 
     cleanupTimer = window.setTimeout(() => {
       if (!settled) {
-        cleanup();
-        resolve([]);
+        console.log('[UploadScreen] web file input timed out');
+        settle([]);
       }
-    }, 5 * 60 * 1000);
+    }, 60 * 1000);
 
     console.log('[UploadScreen] opening web file input', {
       accept,
@@ -482,11 +522,19 @@ export function UploadScreen() {
 
   async function pickFromCamera() {
     if (Platform.OS === 'web') {
-      const files = await openWebFileDialog({
+      let files = await openWebFileDialog({
         accept: WEB_CAMERA_ACCEPT,
         capture: true,
         multiple: false,
       });
+
+      if (files.length === 0) {
+        console.log('[UploadScreen] camera capture returned no file, retrying with image picker fallback');
+        files = await openWebFileDialog({
+          accept: WEB_CAMERA_ACCEPT,
+          multiple: false,
+        });
+      }
 
       applyWebSelectedFiles(files, 'camera');
       return;
