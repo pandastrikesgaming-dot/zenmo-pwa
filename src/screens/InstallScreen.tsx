@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -57,10 +57,24 @@ export function InstallScreen() {
       setInstallPrompt(event as BeforeInstallPromptEvent);
     };
 
+    const handleAppInstalled = () => {
+      Animated.timing(progressAnim, {
+        toValue: 100,
+        duration: 300,
+        useNativeDriver: false,
+      }).start(() => {
+        setTimeout(() => {
+          setIsInstalling(false);
+        }, 500);
+      });
+    };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
     
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
@@ -73,37 +87,26 @@ export function InstallScreen() {
     setIsInstalling(true);
     setInstallFailed(false);
     
-    // Simulate progress 0 -> 30 immediately
+    // Wait for user to accept native prompt
     Animated.timing(progressAnim, {
-      toValue: 30,
+      toValue: 20,
       duration: 300,
       easing: Easing.out(Easing.ease),
       useNativeDriver: false,
-    }).start(() => {
-      // 30 -> 80 slowly
-      Animated.timing(progressAnim, {
-        toValue: 80,
-        duration: 3500,
-        easing: Easing.linear,
-        useNativeDriver: false,
-      }).start();
-    });
+    }).start();
 
     try {
       await installPrompt.prompt();
       const choice = await installPrompt.userChoice;
       
       if (choice.outcome === 'accepted') {
-        // Jump to 100 on success
+        // App is now downloading/installing. Animate up to 85% until appinstalled event fires.
         Animated.timing(progressAnim, {
-          toValue: 100,
-          duration: 200,
+          toValue: 85,
+          duration: 4000,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: false,
-        }).start(() => {
-          setTimeout(() => {
-            setIsInstalling(false);
-          }, 400);
-        });
+        }).start();
         setInstallPrompt(null);
       } else {
         // Dismissed
@@ -195,7 +198,11 @@ export function InstallScreen() {
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Text style={styles.logoText}>Z</Text>
+            <Image 
+              source={{ uri: '/icons/icon-512.png' }} 
+              style={styles.logoImage} 
+              resizeMode="cover" 
+            />
           </View>
           <Text style={styles.title}>Flash Install</Text>
           <Text style={styles.subtitle}>Install Zenmo in seconds and use it like an app</Text>
@@ -216,9 +223,9 @@ export function InstallScreen() {
         <View style={styles.footer}>
           <Pressable 
             onPress={() => window.location.href = '/onboarding'}
-            style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [styles.skipButton, pressed && styles.skipButtonPressed]}
           >
-            <Text style={styles.footerText}>Continue to Web App</Text>
+            <Text style={styles.skipButtonText}>Continue to Web App</Text>
           </Pressable>
         </View>
       </View>
@@ -256,10 +263,10 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
   },
-  logoText: {
-    fontFamily: typography.fontFamily.display,
-    fontSize: 36,
-    color: '#FF9628',
+  logoImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
   },
   title: {
     fontFamily: typography.fontFamily.display,
@@ -411,10 +418,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 40,
   },
-  footerText: {
+  skipButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  skipButtonPressed: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    transform: [{ scale: 0.98 }],
+  },
+  skipButtonText: {
     fontFamily: typography.fontFamily.bodyBold,
     fontSize: 14,
-    color: '#666666',
-    textDecorationLine: 'underline',
+    color: '#A0A0A0',
   },
 });
