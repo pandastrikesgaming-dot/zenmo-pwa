@@ -680,20 +680,22 @@ export function NoteDetailScreen({ navigation, route }: NoteDetailScreenProps) {
           </Text>
         </Animated.View>
 
-        <Animated.View
-          pointerEvents={chromeHidden ? 'none' : 'auto'}
-          style={[
-            styles.sideControls,
-            {
-              top: Math.max(height * 0.3, insets.top + 150),
-            },
-            sideControlsAnimatedStyle,
-          ]}
-        >
-          <ReaderControl icon="add-circle-outline" label="Zoom In" onPress={handleZoomIn} />
-          <ReaderControl icon="remove-circle-outline" label="Zoom Out" onPress={handleZoomOut} />
-          <ReaderControl icon="scan-outline" label="Fit" onPress={handleFitToScreen} />
-        </Animated.View>
+        {!isPdf ? (
+          <Animated.View
+            pointerEvents={chromeHidden ? 'none' : 'auto'}
+            style={[
+              styles.sideControls,
+              {
+                top: Math.max(height * 0.3, insets.top + 150),
+              },
+              sideControlsAnimatedStyle,
+            ]}
+          >
+            <ReaderControl icon="add-circle-outline" label="Zoom In" onPress={handleZoomIn} />
+            <ReaderControl icon="remove-circle-outline" label="Zoom Out" onPress={handleZoomOut} />
+            <ReaderControl icon="scan-outline" label="Fit" onPress={handleFitToScreen} />
+          </Animated.View>
+        ) : null}
 
         {isMultiImage ? (
           <Animated.View
