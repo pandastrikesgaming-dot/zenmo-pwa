@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import * as pdfjsModule from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 import { colors, typography } from '../theme';
 
@@ -392,7 +393,6 @@ export function PdfDocumentViewer({
           };
         }
 
-        const pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.mjs');
         const pdfjs = (
           pdfjsModule && 'default' in pdfjsModule ? (pdfjsModule as any).default : pdfjsModule
         ) as unknown as PdfJsModule;
