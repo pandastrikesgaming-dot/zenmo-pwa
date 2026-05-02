@@ -320,6 +320,17 @@ export function NoteDetailScreen({ navigation, route }: NoteDetailScreenProps) {
     }
   }
 
+  function toggleFocusMode() {
+    setIsFocusMode((prev) => {
+      const next = !prev;
+      if (!next && isPdf) {
+        setIsChromeAutoHidden(false);
+        scheduleChromeHide();
+      }
+      return next;
+    });
+  }
+
   function exitFocusMode() {
     if (isFocusMode) {
       setIsFocusMode(false);
@@ -521,7 +532,7 @@ export function NoteDetailScreen({ navigation, route }: NoteDetailScreenProps) {
           onInteraction={revealChrome}
           onPageChanged={setCurrentPdfPage}
           onScaleChanged={(nextScale) => setPdfScale(clampScale(nextScale))}
-          onSingleTap={revealChrome}
+          onSingleTap={toggleFocusMode}
           scale={pdfScale}
           width={viewerWidth}
         />
@@ -563,7 +574,7 @@ export function NoteDetailScreen({ navigation, route }: NoteDetailScreenProps) {
           height={viewerHeight}
           imageUrl={activePage.imageUrl}
           onScaleChanged={(nextScale) => setImageScale(clampScale(nextScale))}
-          onSingleTap={enterFocusMode}
+          onSingleTap={toggleFocusMode}
           pageKey={activePage.id}
           width={viewerWidth}
         />
@@ -586,7 +597,7 @@ export function NoteDetailScreen({ navigation, route }: NoteDetailScreenProps) {
         height={viewerHeight}
         imageUrl={note.fileUrl}
         onScaleChanged={(nextScale) => setImageScale(clampScale(nextScale))}
-        onSingleTap={enterFocusMode}
+        onSingleTap={toggleFocusMode}
         pageKey={note.id}
         width={viewerWidth}
       />
