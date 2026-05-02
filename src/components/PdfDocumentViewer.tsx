@@ -81,6 +81,9 @@ function getPdfWorkerSrc() {
 
 function getDocumentOptions() {
   return {
+    cMapUrl: 'https://unpkg.com/pdfjs-dist@5.7.284/cmaps/',
+    cMapPacked: true,
+    standardFontDataUrl: 'https://unpkg.com/pdfjs-dist@5.7.284/standard_fonts/',
     disableAutoFetch: true,
     disableRange: true,
     disableStream: true,
@@ -371,8 +374,31 @@ export function PdfDocumentViewer({
         setPdfDocument(null);
         onErrorRef.current?.('');
 
-        const pdfjs = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfJsModule;
-        pdfjs.GlobalWorkerOptions.workerSrc = getPdfWorkerSrc();
+        if (typeof Promise.withResolvers === 'undefined') {
+          (Promise as any).withResolvers = function () {
+            let resolve, reject;
+            const promise = new Promise((res, rej) => {
+              resolve = res;
+              reject = rej;
+            });
+            return { promise, resolve, reject };
+          };
+        }
+
+        if (typeof Object.hasOwn === 'undefined') {
+          Object.hasOwn = function (obj, prop) {
+            return Object.prototype.hasOwnProperty.call(obj, prop as string | symbol | number);
+          };
+        }
+
+        const pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        const pdfjs = (
+          pdfjsModule && 'default' in pdfjsModule ? (pdfjsModule as any).default : pdfjsModule
+        ) as unknown as PdfJsModule;
+
+        if (pdfjs.GlobalWorkerOptions) {
+          pdfjs.GlobalWorkerOptions.workerSrc = getPdfWorkerSrc();
+        }
         const documentProxy = await loadPdfDocument(pdfjs, fileUrl);
 
         if (cancelled) {
