@@ -155,7 +155,6 @@ function getOutputScale(width: number, height: number) {
 
 function PdfCanvasPage({
   accentColor,
-  onInteraction,
   onPageVisible,
   onRenderError,
   pageNumber,
@@ -164,7 +163,6 @@ function PdfCanvasPage({
   scrollRoot,
 }: {
   accentColor: string;
-  onInteraction?: () => void;
   onPageVisible: (pageNumber: number) => void;
   onRenderError: (message: string) => void;
   pageNumber: number;
@@ -280,8 +278,6 @@ function PdfCanvasPage({
   return (
     <div
       ref={pageRef}
-      onMouseMove={onInteraction}
-      onTouchStart={onInteraction}
       style={pageShellStyle}
     >
       {isRendering ? (
@@ -338,7 +334,10 @@ export function PdfDocumentViewer({
     const root = scrollRoot;
 
     function updateWidth() {
-      setContainerWidth(root.clientWidth || width || 0);
+      setContainerWidth((prev) => {
+        const newWidth = root.clientWidth || width || 0;
+        return Math.abs(newWidth - prev) > 20 ? newWidth : prev;
+      });
     }
 
     updateWidth();
@@ -439,7 +438,7 @@ export function PdfDocumentViewer({
 
     return clampRenderScale(Math.max((containerWidth - 28) / firstPageWidth, MIN_RENDER_SCALE));
   }, [containerWidth, firstPageWidth]);
-  const renderScale = clampRenderScale(fitScale * scale);
+  const renderScale = clampRenderScale(fitScale * 1.5);
   const pages = useMemo(
     () => Array.from({ length: pdfDocument?.numPages ?? 0 }, (_, index) => index + 1),
     [pdfDocument?.numPages]
@@ -479,27 +478,25 @@ export function PdfDocumentViewer({
         <div
           ref={setScrollNode}
           onClick={onSingleTap}
-          onMouseMove={handleInteraction}
-          onScroll={handleInteraction}
-          onTouchStart={handleInteraction}
           style={scrollStyle}
         >
-          {pages.map((pageNumber) => (
-            <PdfCanvasPage
-              key={`${pageNumber}-${renderScale.toFixed(3)}`}
-              accentColor={accentColor}
-              onInteraction={handleInteraction}
-              onPageVisible={handlePageVisible}
-              onRenderError={(message) => {
-                setLoadError(message);
-                onError?.(message);
-              }}
-              pageNumber={pageNumber}
-              pdfDocument={pdfDocument}
-              renderScale={renderScale}
-              scrollRoot={scrollRoot}
-            />
-          ))}
+          <div style={{ transform: `scale(${scale})`, transformOrigin: 'top center', transition: 'transform 0.15s ease-out' }}>
+            {pages.map((pageNumber) => (
+              <PdfCanvasPage
+                key={pageNumber}
+                accentColor={accentColor}
+                onPageVisible={handlePageVisible}
+                onRenderError={(message) => {
+                  setLoadError(message);
+                  onError?.(message);
+                }}
+                pageNumber={pageNumber}
+                pdfDocument={pdfDocument}
+                renderScale={renderScale}
+                scrollRoot={scrollRoot}
+              />
+            ))}
+          </div>
         </div>
       )}
     </View>
