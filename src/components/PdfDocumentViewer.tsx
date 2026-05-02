@@ -272,7 +272,8 @@ function PdfCanvasPage({
         }
 
         console.error('[PdfDocumentViewer] page render failed', error);
-        onRenderError('PDF preview failed. Please refresh and try again.');
+        const message = error instanceof Error ? error.stack || error.message : String(error);
+        onRenderError(`DEBUG: ${message}`);
         setIsRendering(false);
       }
     }
@@ -425,10 +426,10 @@ export function PdfDocumentViewer({
         }
 
         console.error('[PdfDocumentViewer] load failed', error);
-        const message = 'PDF preview failed. Please refresh and try again.';
-        setLoadError(message);
+        const message = error instanceof Error ? error.stack || error.message : String(error);
+        setLoadError(`DEBUG: ${message}`);
         setIsLoading(false);
-        onErrorRef.current?.(message);
+        onErrorRef.current?.(`DEBUG: ${message}`);
       }
     }
 
