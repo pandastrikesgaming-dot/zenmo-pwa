@@ -444,13 +444,14 @@ export function PdfDocumentViewer({
     [pdfDocument?.numPages]
   );
 
-  function handlePageVisible(pageNumber: number) {
+  const handlePageVisible = useCallback((pageNumber: number) => {
     onPageChangedRef.current?.(pageNumber);
-  }
+  }, []);
 
-  function handleInteraction() {
-    onInteraction?.();
-  }
+  const handleRenderError = useCallback((message: string) => {
+    setLoadError(message);
+    onErrorRef.current?.(message);
+  }, []);
 
   return (
     <View
@@ -486,10 +487,7 @@ export function PdfDocumentViewer({
                 key={pageNumber}
                 accentColor={accentColor}
                 onPageVisible={handlePageVisible}
-                onRenderError={(message) => {
-                  setLoadError(message);
-                  onError?.(message);
-                }}
+                onRenderError={handleRenderError}
                 pageNumber={pageNumber}
                 pdfDocument={pdfDocument}
                 renderScale={renderScale}
