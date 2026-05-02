@@ -45,4 +45,5 @@ export type RootStackParamList = {
   NoteDetail: {
     note: RecentNote;
   };
+  Install: undefined;
 };

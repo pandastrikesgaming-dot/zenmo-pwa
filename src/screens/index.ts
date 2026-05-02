@@ -13,3 +13,4 @@ export * from './NoteDetailScreen';
 export * from './RequestNoteScreen';
 export * from './RequestsFeedScreen';
 export * from './RequestDetailScreen';
+export * from './InstallScreen';

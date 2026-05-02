@@ -8,7 +8,6 @@ export * from './PdfDocumentViewer';
 export * from './PdfPageCountProbe';
 export * from './UploadActionCard';
 export * from './FilePreviewCard';
-export * from './InstallPwaButton';
 export * from './QuickNotePreview';
 export * from './ReportNoteModal';
 export * from './SchoolSelector';

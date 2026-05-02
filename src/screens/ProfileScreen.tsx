@@ -20,7 +20,7 @@ import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { InstallPwaButton, SchoolSelector } from '../components';
+import { SchoolSelector } from '../components';
 import { fixedSubjects } from '../constants/subjects';
 import { useAuth } from '../hooks';
 import { isValidSection, normalizeSectionId } from '../lib/normalizeSectionId';
@@ -681,8 +681,6 @@ export function ProfileScreen() {
                   <Text style={styles.inviteButtonText}>Share Zenmo</Text>
                 </LinearGradient>
               </Pressable>
-
-              <InstallPwaButton />
             </LinearGradient>
           </View>
 

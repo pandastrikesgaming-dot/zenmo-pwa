@@ -2,7 +2,7 @@
   "name": "Zenmo",
   "short_name": "Zenmo",
   "display": "standalone",
-  "start_url": "/",
+  "start_url": "/onboarding",
   "scope": "/",
   "theme_color": "#0b0b0b",
   "background_color": "#0b0b0b",

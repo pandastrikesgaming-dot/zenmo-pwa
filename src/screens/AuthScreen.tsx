@@ -10,7 +10,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { InstallPwaButton } from '../components';
 import { useAuth } from '../hooks';
 import { colors, typography } from '../theme';
 
@@ -225,8 +224,6 @@ export function AuthScreen() {
             </Pressable>
 
             {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-            <InstallPwaButton />
 
             <View style={styles.trustBlock}>
               <View style={styles.trustPlanetGlow} />

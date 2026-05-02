@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { DefaultTheme, NavigationContainer, type Theme } from '@react-navigation/native';
+import { DefaultTheme, NavigationContainer, type LinkingOptions, type Theme } from '@react-navigation/native';
 import {
   createBottomTabNavigator,
   type BottomTabBarProps,
@@ -38,6 +38,7 @@ import {
   ClassmatesScreen,
   EnterCodeScreen,
   HomeScreen,
+  InstallScreen,
   NoteDetailScreen,
   ProfileScreen,
   ProfileSetupScreen,
@@ -62,6 +63,16 @@ const navigationTheme: Theme = {
     card: colors.surface,
     primary: colors.primary,
     text: colors.text,
+  },
+};
+
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: [],
+  config: {
+    screens: {
+      Install: '',
+      Auth: 'onboarding',
+    },
   },
 };
 
@@ -382,6 +393,7 @@ export function AppNavigator() {
       ref={navigationRef}
       theme={navigationTheme}
       onReady={flushPendingNavigationAction}
+      linking={linking}
     >
       <Stack.Navigator
         screenOptions={{
@@ -409,6 +421,7 @@ export function AppNavigator() {
         ) : (
           <Stack.Screen name="Auth" component={AuthScreen} />
         )}
+        <Stack.Screen name="Install" component={InstallScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
