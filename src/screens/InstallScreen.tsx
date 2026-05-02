@@ -30,6 +30,7 @@ export function InstallScreen() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalling, setIsInstalling] = useState(false);
   const [installFailed, setInstallFailed] = useState(false);
+  const isStandalone = isStandaloneDisplay();
   
   const progressAnim = useRef(new Animated.Value(0)).current;
 
@@ -38,7 +39,7 @@ export function InstallScreen() {
       return;
     }
 
-    if (isStandaloneDisplay()) {
+    if (isStandalone) {
       window.location.replace('/onboarding');
       return;
     }
@@ -153,6 +154,9 @@ export function InstallScreen() {
             />
           </View>
           <Text style={styles.loaderText}>Preparing Zenmo...</Text>
+          <Text style={styles.loaderSubText}>
+            App will install in the background and appear on your homescreen shortly.
+          </Text>
         </View>
       )}
 
@@ -192,6 +196,10 @@ export function InstallScreen() {
       </View>
     </View>
   );
+
+  if (isStandalone) {
+    return null;
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -358,6 +366,15 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bodyRegular,
     fontSize: 14,
     color: '#888888',
+  },
+  loaderSubText: {
+    fontFamily: typography.fontFamily.bodyRegular,
+    fontSize: 12,
+    color: '#666666',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 20,
+    lineHeight: 18,
   },
   fallbackText: {
     fontFamily: typography.fontFamily.bodyRegular,
