@@ -4,7 +4,6 @@ export function registerServiceWorker() {
   }
 
   if (
-    __DEV__ ||
     typeof window === 'undefined' ||
     typeof navigator === 'undefined' ||
     !('serviceWorker' in navigator)

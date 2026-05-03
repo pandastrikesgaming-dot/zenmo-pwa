@@ -151,7 +151,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
 
         const subJson = subscription.toJSON();
         const subStr = JSON.stringify(subJson);
-        const cacheKey = `zenmo_push_sub_${user.id}`;
+        const cacheKey = `zenmo_push_sub_v2_${user.id}`;
         
         if (localStorage.getItem(cacheKey) === subStr) {
           return;
