@@ -150,24 +150,41 @@ Deno.serve(async (request) => {
     return jsonResponse(400, { error: 'requestId and valid eventType are required' });
   }
 
-  const { data: noteRequest, error: noteRequestError } = await adminClient
-    .from('note_requests')
-    .select(
-      'id, user_id, user_name, school_id, class_id, section_id, subject, title, status, fulfilled_by_user_id, fulfilled_by_note_id, fulfilled_at'
-    )
-    .eq('id', payload.requestId)
-    .maybeSingle();
+  let typedRequest: NoteRequestRow = {
+    id: 'test-id',
+    user_id: user.id,
+    user_name: 'Test User',
+    school_id: 'test',
+    class_id: 'test',
+    section_id: 'test',
+    subject: 'System Test',
+    title: 'Notification Test',
+    status: 'open',
+    fulfilled_by_user_id: null,
+    fulfilled_by_note_id: null,
+    fulfilled_at: null
+  };
 
-  if (noteRequestError) {
-    console.error('[send-request-push] request lookup failed', noteRequestError);
-    return jsonResponse(500, { error: 'Unable to load request details' });
+  if (payload.eventType !== 'test') {
+    const { data: noteRequest, error: noteRequestError } = await adminClient
+      .from('note_requests')
+      .select(
+        'id, user_id, user_name, school_id, class_id, section_id, subject, title, status, fulfilled_by_user_id, fulfilled_by_note_id, fulfilled_at'
+      )
+      .eq('id', payload.requestId)
+      .maybeSingle();
+
+    if (noteRequestError) {
+      console.error('[send-request-push] request lookup failed', noteRequestError);
+      return jsonResponse(500, { error: 'Unable to load request details' });
+    }
+
+    if (!noteRequest) {
+      return jsonResponse(404, { error: 'Request not found' });
+    }
+    
+    typedRequest = noteRequest as NoteRequestRow;
   }
-
-  if (!noteRequest) {
-    return jsonResponse(404, { error: 'Request not found' });
-  }
-
-  const typedRequest = noteRequest as NoteRequestRow;
 
   if (payload.eventType === 'created' && typedRequest.user_id !== user.id) {
     return jsonResponse(403, { error: 'Only the requester can send created notifications' });
