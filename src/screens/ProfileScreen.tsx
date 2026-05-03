@@ -825,6 +825,7 @@ export function ProfileScreen() {
                   }
                   
                   setDebugMessage("Success! Token saved manually.");
+                  alert("Success! Token saved manually.");
                 } catch (e) {
                   setDebugMessage("Catch: " + (e instanceof Error ? e.message : String(e)));
                 }
@@ -834,6 +835,31 @@ export function ProfileScreen() {
           >
             <Ionicons name="bug-outline" size={21} color="#B65CFF" />
             <Text style={styles.logoutButtonText}>Debug: Force Push Token</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              void (async () => {
+                setDebugMessage("Sending test push...");
+                try {
+                  const { supabase } = await import('../lib/supabase');
+                  const { data, error } = await supabase.functions.invoke('send-request-push', {
+                    body: { eventType: 'test', requestId: 'test-id' }
+                  });
+                  if (error) {
+                    setDebugMessage("Edge Error: " + error.message);
+                  } else {
+                    setDebugMessage("Push sent! Check your notifications. " + JSON.stringify(data));
+                  }
+                } catch(e) {
+                  setDebugMessage("Push Catch Error: " + String(e));
+                }
+              })();
+            }}
+            style={({ pressed }) => [styles.logoutButton, pressed && styles.pressedCard, { marginBottom: 12, backgroundColor: 'rgba(255, 138, 26, 0.15)' }]}
+          >
+            <Ionicons name="paper-plane-outline" size={21} color="#FF8A1A" />
+            <Text style={styles.logoutButtonText}>Debug: Test Broadcast</Text>
           </Pressable>
 
           <Pressable

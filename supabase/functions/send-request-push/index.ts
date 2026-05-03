@@ -60,6 +60,12 @@ function buildNotificationContent(eventType: RequestNotificationEventType, reque
       body: `${request.subject}: ${request.title} has been answered`,
     };
   }
+  if (eventType === 'test') {
+    return {
+      title: 'Test Web Push Successful!',
+      body: 'Your PWA push notifications are working perfectly.',
+    };
+  }
 
   return {
     title: 'New note request',
@@ -130,7 +136,7 @@ Deno.serve(async (request) => {
     return jsonResponse(400, { error: 'Invalid JSON body' });
   }
 
-  if (!payload.requestId || (payload.eventType !== 'created' && payload.eventType !== 'fulfilled')) {
+  if (!payload.requestId || (payload.eventType !== 'created' && payload.eventType !== 'fulfilled' && payload.eventType !== 'test')) {
     return jsonResponse(400, { error: 'requestId and valid eventType are required' });
   }
 
@@ -169,7 +175,9 @@ Deno.serve(async (request) => {
 
   let recipientUserIds: string[] = [];
 
-  if (payload.eventType === 'created') {
+  if (payload.eventType === 'test') {
+    recipientUserIds = [user.id]; // Test pushes go directly to the person who triggered it
+  } else if (payload.eventType === 'created') {
     const { data: scopedProfiles, error: scopedProfilesError } = await adminClient
       .from('profiles')
       .select('id')
