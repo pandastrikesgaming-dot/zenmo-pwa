@@ -1,4 +1,5 @@
 // @ts-nocheck
+import webpush from 'npm:web-push';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 type RequestNotificationEventType = 'created' | 'fulfilled';
@@ -26,6 +27,18 @@ type PushTokenRow = {
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
 const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const expoAccessToken = Deno.env.get('EXPO_ACCESS_TOKEN') ?? '';
+
+const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY') ?? Deno.env.get('EXPO_PUBLIC_VAPID_KEY') ?? '';
+const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY') ?? '';
+const vapidSubject = Deno.env.get('VAPID_SUBJECT') ?? 'mailto:admin@example.com';
+
+if (vapidPublicKey && vapidPrivateKey) {
+  webpush.setVapidDetails(
+    vapidSubject,
+    vapidPublicKey,
+    vapidPrivateKey
+  );
+}
 
 function jsonResponse(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
@@ -285,9 +298,38 @@ Deno.serve(async (request) => {
     }
   }
 
+  // --- Web Push (PWA) ---
+  const { data: pushSubscriptions } = await adminClient
+    .from('push_subscriptions')
+    .select('id, subscription')
+    .in('user_id', recipientUserIds);
+
+  let webSentCount = 0;
+  if (pushSubscriptions && pushSubscriptions.length > 0) {
+    for (const sub of pushSubscriptions) {
+      try {
+        await webpush.sendNotification(
+          sub.subscription,
+          JSON.stringify({
+            title: content.title,
+            body: content.body,
+            url: `/requests/${typedRequest.id}`
+          })
+        );
+        webSentCount++;
+      } catch (err) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await adminClient.from('push_subscriptions').delete().eq('id', sub.id);
+        }
+        console.error('[send-request-push] web-push error', err);
+      }
+    }
+  }
+
   return jsonResponse(200, {
     sentCount,
     skippedCount: uniqueTokens.length - sentCount,
     invalidTokenCount: invalidTokens.size,
+    webSentCount
   });
 });

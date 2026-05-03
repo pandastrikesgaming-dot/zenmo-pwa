@@ -110,6 +110,61 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   const attemptedRegistrationForUserId = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!user?.id || !profile || Platform.OS !== 'web') {
+      return;
+    }
+
+    const VAPID_PUBLIC_KEY = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!VAPID_PUBLIC_KEY) return;
+
+    void (async () => {
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          return;
+        }
+
+        const permission = await window.Notification.requestPermission();
+        if (permission !== 'granted') return;
+
+        const registration = await navigator.serviceWorker.ready;
+        let subscription = await registration.pushManager.getSubscription();
+
+        if (!subscription) {
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: VAPID_PUBLIC_KEY
+          });
+        }
+
+        const subJson = subscription.toJSON();
+        const subStr = JSON.stringify(subJson);
+        const cacheKey = `zenmo_push_sub_${user.id}`;
+        
+        if (localStorage.getItem(cacheKey) === subStr) {
+          return;
+        }
+
+        const { supabase } = await import('../lib/supabase');
+        const { error: insertError } = await supabase.from('push_subscriptions').insert({
+          user_id: user.id,
+          subscription: subJson,
+        });
+        
+        if (insertError) {
+          console.error('[web-push] Failed to save subscription to Supabase:', insertError);
+          return;
+        }
+        
+        localStorage.setItem(cacheKey, subStr);
+      } catch (error) {
+        logNotificationBootstrap('web-push-error', {
+          message: error instanceof Error ? error.message : String(error)
+        });
+      }
+    })();
+  }, [profile, user?.id]);
+
+  useEffect(() => {
     let cancelled = false;
 
     void (async () => {
