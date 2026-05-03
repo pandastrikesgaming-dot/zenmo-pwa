@@ -11,13 +11,19 @@ export function registerServiceWorker() {
     return;
   }
 
-  window.addEventListener('load', () => {
+  const register = () => {
     void navigator.serviceWorker.register('/service-worker.js').catch((error) => {
-      if (__DEV__) {
+      if (process.env.NODE_ENV === 'development') {
         console.warn('[pwa] service worker registration failed', error);
       }
     });
-  });
+  };
+
+  if (document.readyState === 'complete') {
+    register();
+  } else {
+    window.addEventListener('load', register);
+  }
 }
 
 function ensurePwaHeadTags() {
