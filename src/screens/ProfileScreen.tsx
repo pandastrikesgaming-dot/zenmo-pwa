@@ -116,6 +116,7 @@ export function ProfileScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
+  const [debugMessage, setDebugMessage] = useState<string>('');
   const [fullName, setFullName] = useState('');
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
   const [displaySchoolName, setDisplaySchoolName] = useState('Not set');
@@ -766,26 +767,38 @@ export function ProfileScreen() {
             <Ionicons name="chevron-forward" size={24} color="rgba(247, 240, 232, 0.45)" />
           </View>
 
+          <View style={{ padding: 10, backgroundColor: 'black', borderRadius: 8, marginBottom: 10 }}>
+            <Text style={{ color: 'white', fontSize: 12 }}>Debug Output: {debugMessage || 'Waiting for interaction...'}</Text>
+          </View>
           <Pressable
             onPress={() => {
               if (typeof window === 'undefined') return;
+              setDebugMessage("Starting push process...");
               void (async () => {
                 try {
                   const VAPID_PUBLIC_KEY = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY;
                   if (!VAPID_PUBLIC_KEY) {
-                    alert("Missing VAPID Key!");
+                    setDebugMessage("Missing VAPID Key!");
                     return;
                   }
                   if (!('serviceWorker' in navigator)) {
-                    alert("No serviceWorker"); return;
+                    setDebugMessage("No serviceWorker"); return;
                   }
+                  
+                  setDebugMessage("Requesting permission...");
                   const permission = await window.Notification.requestPermission();
                   if (permission !== 'granted') {
-                    alert("Permission: " + permission); return;
+                    setDebugMessage("Permission: " + permission); return;
                   }
+                  
+                  setDebugMessage("Waiting for serviceWorker.ready...");
                   const registration = await navigator.serviceWorker.ready;
+                  
+                  setDebugMessage("Getting subscription...");
                   let subscription = await registration.pushManager.getSubscription();
+                  
                   if (!subscription) {
+                    setDebugMessage("No existing sub, creating new one...");
                     const padding = '='.repeat((4 - (VAPID_PUBLIC_KEY.length % 4)) % 4);
                     const base64 = (VAPID_PUBLIC_KEY + padding).replace(/\-/g, '+').replace(/_/g, '/');
                     const rawData = window.atob(base64);
@@ -798,18 +811,22 @@ export function ProfileScreen() {
                       applicationServerKey: outputArray
                     });
                   }
+                  
+                  setDebugMessage("Subscribing to Supabase...");
                   const subJson = subscription.toJSON();
                   const { supabase } = await import('../lib/supabase');
                   const { error: insertError } = await supabase.from('push_subscriptions').insert({
                     user_id: user?.id,
                     subscription: subJson,
                   });
+                  
                   if (insertError) {
-                    alert("Insert Error: " + JSON.stringify(insertError)); return;
+                    setDebugMessage("Insert Error: " + JSON.stringify(insertError)); return;
                   }
-                  alert("Success! Token saved manually.");
+                  
+                  setDebugMessage("Success! Token saved manually.");
                 } catch (e) {
-                  alert("Catch: " + (e instanceof Error ? e.message : String(e)));
+                  setDebugMessage("Catch: " + (e instanceof Error ? e.message : String(e)));
                 }
               })();
             }}
