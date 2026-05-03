@@ -251,86 +251,86 @@ Deno.serve(async (request) => {
     ),
   ];
 
-  if (uniqueTokens.length === 0) {
-    return jsonResponse(200, {
-      sentCount: 0,
-      skippedCount: 0,
-      message: 'No valid Expo push tokens found',
-    });
-  }
-
   const content = buildNotificationContent(payload.eventType, typedRequest);
-  const messages = uniqueTokens.map((token) => ({
-    to: token,
-    title: content.title,
-    body: content.body,
-    sound: 'default',
-    data: {
-      requestId: typedRequest.id,
-      type: payload.eventType,
-    },
-  }));
-
-  const invalidTokens = new Set<string>();
+  
   let sentCount = 0;
+  let skippedCount = 0;
+  let invalidTokenCount = 0;
+  const invalidTokens = new Set<string>();
 
-  for (const chunk of chunkArray(messages, 100)) {
-    const response = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(expoAccessToken ? { Authorization: `Bearer ${expoAccessToken}` } : {}),
+  if (uniqueTokens.length > 0) {
+    const messages = uniqueTokens.map((token) => ({
+      to: token,
+      title: content.title,
+      body: content.body,
+      sound: 'default',
+      data: {
+        requestId: typedRequest.id,
+        type: payload.eventType,
       },
-      body: JSON.stringify(chunk),
-    });
+    }));
 
-    if (!response.ok) {
-      console.error('[send-request-push] expo push request failed', await response.text());
-      continue;
-    }
-
-    const responseBody = await response.json();
-    const tickets = normalizeExpoResponseData((responseBody as { data?: unknown }).data);
-
-    tickets.forEach((ticket, index) => {
-      const token = chunk[index]?.to;
-
-      if (!token || !ticket || typeof ticket !== 'object') {
-        return;
-      }
-
-      const candidate = ticket as {
-        status?: string;
-        details?: {
-          error?: string;
-        };
-      };
-
-      if (candidate.status === 'ok') {
-        sentCount += 1;
-        return;
-      }
-
-      if (candidate.details?.error === 'DeviceNotRegistered') {
-        invalidTokens.add(token);
-      }
-
-      console.error('[send-request-push] expo push ticket error', {
-        ticket: candidate,
-        token,
+    for (const chunk of chunkArray(messages, 100)) {
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(expoAccessToken ? { Authorization: `Bearer ${expoAccessToken}` } : {}),
+        },
+        body: JSON.stringify(chunk),
       });
-    });
-  }
 
-  if (invalidTokens.size > 0) {
-    const { error: deleteInvalidTokensError } = await adminClient
-      .from('push_tokens')
-      .delete()
-      .in('expo_push_token', [...invalidTokens]);
+      if (!response.ok) {
+        console.error('[send-request-push] expo push request failed', await response.text());
+        continue;
+      }
 
-    if (deleteInvalidTokensError) {
-      console.error('[send-request-push] unable to remove invalid tokens', deleteInvalidTokensError);
+      const responseBody = await response.json();
+      const tickets = normalizeExpoResponseData((responseBody as { data?: unknown }).data);
+
+      tickets.forEach((ticket, index) => {
+        const token = chunk[index]?.to;
+
+        if (!token || !ticket || typeof ticket !== 'object') {
+          return;
+        }
+
+        const candidate = ticket as {
+          status?: string;
+          details?: {
+            error?: string;
+          };
+        };
+
+        if (candidate.status === 'ok') {
+          sentCount += 1;
+          return;
+        }
+
+        if (candidate.details?.error === 'DeviceNotRegistered') {
+          invalidTokens.add(token);
+        }
+
+        console.error('[send-request-push] expo push ticket error', {
+          ticket: candidate,
+          token,
+        });
+      });
     }
+
+    if (invalidTokens.size > 0) {
+      const { error: deleteInvalidTokensError } = await adminClient
+        .from('push_tokens')
+        .delete()
+        .in('expo_push_token', [...invalidTokens]);
+
+      if (deleteInvalidTokensError) {
+        console.error('[send-request-push] unable to remove invalid tokens', deleteInvalidTokensError);
+      }
+    }
+    
+    skippedCount = uniqueTokens.length - sentCount;
+    invalidTokenCount = invalidTokens.size;
   }
 
   // --- Web Push (PWA) ---
@@ -363,8 +363,8 @@ Deno.serve(async (request) => {
 
   return jsonResponse(200, {
     sentCount,
-    skippedCount: uniqueTokens.length - sentCount,
-    invalidTokenCount: invalidTokens.size,
+    skippedCount,
+    invalidTokenCount,
     webSentCount
   });
 });
