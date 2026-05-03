@@ -340,6 +340,8 @@ Deno.serve(async (request) => {
     .in('user_id', recipientUserIds);
 
   let webSentCount = 0;
+  let webPushError = null;
+  
   if (pushSubscriptions && pushSubscriptions.length > 0) {
     for (const sub of pushSubscriptions) {
       try {
@@ -352,11 +354,12 @@ Deno.serve(async (request) => {
           })
         );
         webSentCount++;
-      } catch (err) {
+      } catch (err: any) {
         if (err.statusCode === 410 || err.statusCode === 404) {
           await adminClient.from('push_subscriptions').delete().eq('id', sub.id);
         }
         console.error('[send-request-push] web-push error', err);
+        webPushError = err.message || JSON.stringify(err);
       }
     }
   }
@@ -365,6 +368,8 @@ Deno.serve(async (request) => {
     sentCount,
     skippedCount,
     invalidTokenCount,
-    webSentCount
+    webSentCount,
+    webPushError,
+    foundTokensInDB: pushSubscriptions?.length ?? 0
   });
 });
