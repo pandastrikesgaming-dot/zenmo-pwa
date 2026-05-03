@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0b0b0b"
+      "backgroundColor": "#1A0826"
     },
     "web": {
       "bundler": "metro",
@@ -22,8 +22,8 @@
       "display": "standalone",
       "startUrl": "/",
       "scope": "/",
-      "themeColor": "#0b0b0b",
-      "backgroundColor": "#0b0b0b"
+      "themeColor": "#1A0826",
+      "backgroundColor": "#1A0826"
     },
     "plugins": [
       "expo-font",
