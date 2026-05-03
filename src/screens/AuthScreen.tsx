@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -135,7 +136,11 @@ export function AuthScreen() {
           <View style={styles.logoCard}>
             <View style={styles.logoCardGlowPurple} />
             <View style={styles.logoCardGlowOrange} />
-            <LogoGradientText />
+            <Image 
+              source={{ uri: '/icons/icon-512.png' }} 
+              style={styles.logoImage} 
+              resizeMode="contain" 
+            />
             <Text style={styles.logoSubtext}>SHARED CLASS ARCHIVE</Text>
           </View>
 
@@ -431,6 +436,12 @@ const styles = StyleSheet.create({
       height: 8,
     },
     elevation: 12,
+  },
+  logoImage: {
+    width: 140,
+    height: 140,
+    alignSelf: 'center',
+    marginBottom: 8,
   },
   logoCardGlowPurple: {
     position: 'absolute',

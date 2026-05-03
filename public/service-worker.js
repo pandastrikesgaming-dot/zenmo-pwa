@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zenmo-pwa-v3';
+const CACHE_NAME = 'zenmo-pwa-v4';
 const APP_SHELL = ['/', '/onboarding', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -74,10 +74,15 @@ self.addEventListener('push', event => {
     return;
   }
 
-  if (!data) return;
+  if (!data || !data.url) return;
+
+  // Only show notifications for note requests
+  if (!data.url.includes('/requests/')) {
+    return;
+  }
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'New Notification', {
+    self.registration.showNotification(data.title || 'Zenmo', {
       body: data.body,
       icon: '/icons/icon-192.png',
       data: data.url

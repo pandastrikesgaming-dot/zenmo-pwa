@@ -116,7 +116,7 @@ export function ProfileScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
-  const [debugMessage, setDebugMessage] = useState<string>('');
+
   const [fullName, setFullName] = useState('');
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
   const [displaySchoolName, setDisplaySchoolName] = useState('Not set');
@@ -767,100 +767,7 @@ export function ProfileScreen() {
             <Ionicons name="chevron-forward" size={24} color="rgba(247, 240, 232, 0.45)" />
           </View>
 
-          <View style={{ padding: 10, backgroundColor: 'black', borderRadius: 8, marginBottom: 10 }}>
-            <Text style={{ color: 'white', fontSize: 12 }}>Debug Output: {debugMessage || 'Waiting for interaction...'}</Text>
-          </View>
-          <Pressable
-            onPress={() => {
-              if (typeof window === 'undefined') return;
-              setDebugMessage("Starting push process...");
-              void (async () => {
-                try {
-                  const VAPID_PUBLIC_KEY = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY;
-                  if (!VAPID_PUBLIC_KEY) {
-                    setDebugMessage("Missing VAPID Key!");
-                    return;
-                  }
-                  if (!('serviceWorker' in navigator)) {
-                    setDebugMessage("No serviceWorker"); return;
-                  }
-                  
-                  setDebugMessage("Requesting permission...");
-                  const permission = await window.Notification.requestPermission();
-                  if (permission !== 'granted') {
-                    setDebugMessage("Permission: " + permission); return;
-                  }
-                  
-                  setDebugMessage("Waiting for serviceWorker.ready...");
-                  const registration = await navigator.serviceWorker.ready;
-                  
-                  setDebugMessage("Getting subscription...");
-                  let subscription = await registration.pushManager.getSubscription();
-                  
-                  if (!subscription) {
-                    setDebugMessage("No existing sub, creating new one...");
-                    const padding = '='.repeat((4 - (VAPID_PUBLIC_KEY.length % 4)) % 4);
-                    const base64 = (VAPID_PUBLIC_KEY + padding).replace(/\-/g, '+').replace(/_/g, '/');
-                    const rawData = window.atob(base64);
-                    const outputArray = new Uint8Array(rawData.length);
-                    for (let i = 0; i < rawData.length; ++i) {
-                      outputArray[i] = rawData.charCodeAt(i);
-                    }
-                    subscription = await registration.pushManager.subscribe({
-                      userVisibleOnly: true,
-                      applicationServerKey: outputArray
-                    });
-                  }
-                  
-                  setDebugMessage("Subscribing to Supabase...");
-                  const subJson = subscription.toJSON();
-                  const { supabase } = await import('../lib/supabase');
-                  const { error: insertError } = await supabase.from('push_subscriptions').insert({
-                    user_id: user?.id,
-                    subscription: subJson,
-                  });
-                  
-                  if (insertError) {
-                    setDebugMessage("Insert Error: " + JSON.stringify(insertError)); return;
-                  }
-                  
-                  setDebugMessage("Success! Token saved manually.");
-                  alert("Success! Token saved manually.");
-                } catch (e) {
-                  setDebugMessage("Catch: " + (e instanceof Error ? e.message : String(e)));
-                }
-              })();
-            }}
-            style={({ pressed }) => [styles.logoutButton, pressed && styles.pressedCard, { marginBottom: 12, backgroundColor: 'rgba(182, 92, 255, 0.1)' }]}
-          >
-            <Ionicons name="bug-outline" size={21} color="#B65CFF" />
-            <Text style={styles.logoutButtonText}>Debug: Force Push Token</Text>
-          </Pressable>
 
-          <Pressable
-            onPress={() => {
-              void (async () => {
-                setDebugMessage("Sending test push...");
-                try {
-                  const { supabase } = await import('../lib/supabase');
-                  const { data, error } = await supabase.functions.invoke('send-request-push', {
-                    body: { eventType: 'test', requestId: 'test-id' }
-                  });
-                  if (error) {
-                    setDebugMessage("Edge Error: " + error.message);
-                  } else {
-                    setDebugMessage("Push sent! Check your notifications. " + JSON.stringify(data));
-                  }
-                } catch(e) {
-                  setDebugMessage("Push Catch Error: " + String(e));
-                }
-              })();
-            }}
-            style={({ pressed }) => [styles.logoutButton, pressed && styles.pressedCard, { marginBottom: 12, backgroundColor: 'rgba(255, 138, 26, 0.15)' }]}
-          >
-            <Ionicons name="paper-plane-outline" size={21} color="#FF8A1A" />
-            <Text style={styles.logoutButtonText}>Debug: Test Broadcast</Text>
-          </Pressable>
 
           <Pressable
             onPress={() => void handleSignOut()}

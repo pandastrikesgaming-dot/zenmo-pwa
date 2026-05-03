@@ -129,24 +129,21 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
 
     const VAPID_PUBLIC_KEY = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY;
     if (!VAPID_PUBLIC_KEY) {
-      alert("Missing VAPID Key in environment!");
+      console.warn("Missing VAPID Key in environment!");
       return;
     }
 
     void (async () => {
       try {
         if (!('serviceWorker' in navigator)) {
-          alert("No serviceWorker in navigator");
           return;
         }
         if (!('PushManager' in window)) {
-          alert("No PushManager in window");
           return;
         }
 
         const permission = await window.Notification.requestPermission();
         if (permission !== 'granted') {
-          alert("Permission not granted: " + permission);
           return;
         }
 
@@ -175,15 +172,12 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
         });
         
         if (insertError) {
-          alert("Supabase Insert Error: " + JSON.stringify(insertError));
           console.error('[web-push] Failed to save subscription to Supabase:', insertError);
           return;
         }
         
         localStorage.setItem(cacheKey, subStr);
-        alert("Success! Push subscription saved to database.");
       } catch (error) {
-        alert("Catch Error: " + (error instanceof Error ? error.message : String(error)));
         logNotificationBootstrap('web-push-error', {
           message: error instanceof Error ? error.message : String(error)
         });
