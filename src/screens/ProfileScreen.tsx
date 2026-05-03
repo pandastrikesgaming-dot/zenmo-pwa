@@ -767,6 +767,59 @@ export function ProfileScreen() {
           </View>
 
           <Pressable
+            onPress={() => {
+              if (typeof window === 'undefined') return;
+              void (async () => {
+                try {
+                  const VAPID_PUBLIC_KEY = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY;
+                  if (!VAPID_PUBLIC_KEY) {
+                    alert("Missing VAPID Key!");
+                    return;
+                  }
+                  if (!('serviceWorker' in navigator)) {
+                    alert("No serviceWorker"); return;
+                  }
+                  const permission = await window.Notification.requestPermission();
+                  if (permission !== 'granted') {
+                    alert("Permission: " + permission); return;
+                  }
+                  const registration = await navigator.serviceWorker.ready;
+                  let subscription = await registration.pushManager.getSubscription();
+                  if (!subscription) {
+                    const padding = '='.repeat((4 - (VAPID_PUBLIC_KEY.length % 4)) % 4);
+                    const base64 = (VAPID_PUBLIC_KEY + padding).replace(/\-/g, '+').replace(/_/g, '/');
+                    const rawData = window.atob(base64);
+                    const outputArray = new Uint8Array(rawData.length);
+                    for (let i = 0; i < rawData.length; ++i) {
+                      outputArray[i] = rawData.charCodeAt(i);
+                    }
+                    subscription = await registration.pushManager.subscribe({
+                      userVisibleOnly: true,
+                      applicationServerKey: outputArray
+                    });
+                  }
+                  const subJson = subscription.toJSON();
+                  const { supabase } = await import('../lib/supabase');
+                  const { error: insertError } = await supabase.from('push_subscriptions').insert({
+                    user_id: user?.id,
+                    subscription: subJson,
+                  });
+                  if (insertError) {
+                    alert("Insert Error: " + JSON.stringify(insertError)); return;
+                  }
+                  alert("Success! Token saved manually.");
+                } catch (e) {
+                  alert("Catch: " + (e instanceof Error ? e.message : String(e)));
+                }
+              })();
+            }}
+            style={({ pressed }) => [styles.logoutButton, pressed && styles.pressedCard, { marginBottom: 12, backgroundColor: 'rgba(182, 92, 255, 0.1)' }]}
+          >
+            <Ionicons name="bug-outline" size={21} color="#B65CFF" />
+            <Text style={styles.logoutButtonText}>Debug: Force Push Token</Text>
+          </Pressable>
+
+          <Pressable
             onPress={() => void handleSignOut()}
             style={({ pressed }) => [styles.logoutButton, pressed && styles.pressedCard]}
           >
